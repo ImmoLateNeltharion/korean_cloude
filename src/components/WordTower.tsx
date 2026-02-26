@@ -111,6 +111,26 @@ const WordTower = ({ words }: WordTowerProps) => {
     return rows;
   }, [words]);
 
+  // Generate SVG silhouette path points
+  const silhouettePath = useMemo(() => {
+    const height = 700;
+    const centerX = 250;
+    const maxHalfWidth = 250;
+    const steps = 60;
+    const leftPoints: string[] = [];
+    const rightPoints: string[] = [];
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const y = t * height;
+      const halfW = towerProfile(t) * maxHalfWidth;
+      leftPoints.push(`${centerX - halfW},${y}`);
+      rightPoints.unshift(`${centerX + halfW},${y}`);
+    }
+
+    return `M ${leftPoints.join(" L ")} L ${rightPoints.join(" L ")} Z`;
+  }, []);
+
   if (tower.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -120,32 +140,56 @@ const WordTower = ({ words }: WordTowerProps) => {
   }
 
   return (
-    <div className="flex flex-col items-center gap-0 py-8 select-none">
-      {tower.map((row, ri) => (
-        <div
-          key={ri}
-          className="flex items-baseline justify-center flex-nowrap"
-          style={{ gap: "3px", lineHeight: 1.15 }}
-        >
-          {row.words.map((w, wi) => (
-            <span
-              key={`${w.word}-${wi}`}
-              className="whitespace-nowrap leading-tight"
-              style={{
-                fontSize: `${w.fontSize}px`,
-                color: `hsl(${30 + w.ratio * 15}, ${80 + w.ratio * 15}%, ${42 + w.ratio * 33}%)`,
-                textShadow: w.ratio > 0.4
-                  ? `0 0 ${w.ratio * 15}px hsl(35 95% 55% / 0.4)`
-                  : "none",
-                fontWeight: w.ratio > 0.6 ? 900 : w.ratio > 0.3 ? 700 : 600,
-                opacity: w.isUser ? 1 : 0.7,
-              }}
-            >
-              {w.word}
-            </span>
-          ))}
-        </div>
-      ))}
+    <div className="relative flex flex-col items-center gap-0 py-8 select-none">
+      {/* SVG silhouette behind words */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox="0 0 500 700"
+        preserveAspectRatio="xMidYMid meet"
+        style={{ top: '32px' }}
+      >
+        <path
+          d={silhouettePath}
+          fill="none"
+          stroke="hsl(35 80% 50% / 0.12)"
+          strokeWidth="1.5"
+        />
+        {/* Faint inner glow line */}
+        <path
+          d={silhouettePath}
+          fill="hsl(35 80% 50% / 0.03)"
+          stroke="none"
+        />
+      </svg>
+
+      {/* Words */}
+      <div className="relative z-10 flex flex-col items-center gap-0">
+        {tower.map((row, ri) => (
+          <div
+            key={ri}
+            className="flex items-baseline justify-center flex-nowrap"
+            style={{ gap: "3px", lineHeight: 1.15 }}
+          >
+            {row.words.map((w, wi) => (
+              <span
+                key={`${w.word}-${wi}`}
+                className="whitespace-nowrap leading-tight"
+                style={{
+                  fontSize: `${w.fontSize}px`,
+                  color: `hsl(${30 + w.ratio * 15}, ${80 + w.ratio * 15}%, ${42 + w.ratio * 33}%)`,
+                  textShadow: w.ratio > 0.4
+                    ? `0 0 ${w.ratio * 15}px hsl(35 95% 55% / 0.4)`
+                    : "none",
+                  fontWeight: w.ratio > 0.6 ? 900 : w.ratio > 0.3 ? 700 : 600,
+                  opacity: w.isUser ? 1 : 0.7,
+                }}
+              >
+                {w.word}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
