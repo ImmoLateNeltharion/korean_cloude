@@ -107,28 +107,26 @@ const WordTower = ({ words }: WordTowerProps) => {
       rows.push({ placedWords: [], targetWidth: Math.max(20, w), rowT: t, height: 0 });
     }
 
-    // Place each main word as a centered anchor in the best-fit row
-    // Big words go to wider rows, zigzagging slightly
+    // Distribute words evenly: score by fill ratio (prefer least-filled rows)
     let zigzag = 0;
     const usedWidths = new Array(numRows).fill(0);
 
     for (const entry of allWords) {
-      // Find best row: prefer rows where word fits and has most remaining space
-      // Also prefer rows in middle-to-bottom for big words, top for small
       let bestRow = -1;
       let bestScore = -Infinity;
 
       for (let r = 0; r < numRows; r++) {
         const row = rows[r];
-        const maxFontForRow = (row.targetWidth - usedWidths[r]) / (entry.word.length * 0.55 + 0.5);
-        const clampedSize = Math.min(entry.fontSize, Math.max(8, maxFontForRow));
+        const remaining = row.targetWidth - usedWidths[r];
+        const maxFontForRow = remaining / (entry.word.length * 0.55 + 0.5);
+        const clampedSize = Math.min(entry.fontSize, Math.max(7, maxFontForRow));
         const wordW = measureWord(entry.word, clampedSize);
 
         if (usedWidths[r] + wordW <= row.targetWidth + 4) {
-          // Score: prefer rows where the font doesn't get clamped too much
-          const sizeRatio = clampedSize / entry.fontSize;
-          const remainingSpace = row.targetWidth - usedWidths[r] - wordW;
-          const score = sizeRatio * 100 + remainingSpace * 0.1;
+          const fillRatio = usedWidths[r] / row.targetWidth; // 0 = empty, 1 = full
+          const sizeRatio = clampedSize / entry.fontSize; // 1 = no clamping
+          // Strongly prefer empty rows, also prefer rows where word fits at full size
+          const score = sizeRatio * 50 + (1 - fillRatio) * 80;
           if (score > bestScore) {
             bestScore = score;
             bestRow = r;
@@ -137,7 +135,6 @@ const WordTower = ({ words }: WordTowerProps) => {
       }
 
       if (bestRow === -1) {
-        // Force into widest available row
         let maxRemaining = -1;
         for (let r = 0; r < numRows; r++) {
           const rem = rows[r].targetWidth - usedWidths[r];
@@ -150,9 +147,8 @@ const WordTower = ({ words }: WordTowerProps) => {
       const fontSize = Math.max(7, Math.min(entry.fontSize, maxFont));
       const wordW = measureWord(entry.word, fontSize);
 
-      // Zigzag: offset from center slightly
       const availableOffset = (row.targetWidth - usedWidths[bestRow] - wordW) / 2;
-      const offset = availableOffset > 4 ? (zigzag % 2 === 0 ? -1 : 1) * Math.min(availableOffset * 0.3, 15) : 0;
+      const offset = availableOffset > 4 ? (zigzag % 2 === 0 ? -1 : 1) * Math.min(availableOffset * 0.3, 12) : 0;
 
       row.placedWords.push({
         word: entry.word,
