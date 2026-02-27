@@ -122,10 +122,12 @@ const WordTower = ({ words }: WordTowerProps) => {
       }
     }
 
-    // Put remaining into last rows
+    // Put remaining into last rows, clamping font size
     while (wordIdx < sized.length) {
       const lastRow = rows[rows.length - 1];
-      lastRow.words.push(sized[wordIdx]);
+      const w = sized[wordIdx];
+      const maxFontForRow = lastRow.targetWidth / (w.word.length * 0.52 + 0.5);
+      lastRow.words.push({ ...w, fontSize: Math.min(w.fontSize, maxFontForRow) });
       wordIdx++;
     }
 
@@ -189,12 +191,18 @@ const WordTower = ({ words }: WordTowerProps) => {
     <div className="relative flex flex-col items-center py-8 select-none">
       {/* Faint silhouette guide */}
       <svg
-        className="absolute inset-0 w-full h-full pointer-events-none opacity-40"
+        className="absolute inset-0 w-full h-full pointer-events-none"
         viewBox="0 0 500 700"
         preserveAspectRatio="xMidYMid meet"
-        style={{ top: '32px' }}
+        style={{ top: '32px', opacity: 0.3, filter: 'blur(18px)' }}
       >
-        <path d={silhouettePath} fill="none" stroke="hsl(35 80% 40% / 0.08)" strokeWidth="1" />
+        <defs>
+          <radialGradient id="towerGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="hsl(35 80% 45%)" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="hsl(35 80% 45%)" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <path d={silhouettePath} fill="url(#towerGlow)" stroke="none" />
       </svg>
 
       {/* Words */}
@@ -202,11 +210,12 @@ const WordTower = ({ words }: WordTowerProps) => {
         {tower.map((row, ri) => (
           <div
             key={ri}
-            className="flex items-baseline justify-center flex-nowrap overflow-hidden"
+            className="flex items-baseline justify-center flex-nowrap"
             style={{
               gap: "2px",
               lineHeight: 1.1,
               maxWidth: `${row.targetWidth}px`,
+              overflow: "visible",
             }}
           >
             {row.words.map((w, wi) => (
