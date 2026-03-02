@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, BarChart3, Filter, Container, MessageSquare, LogOut } from "lucide-react";
 
 const Admin = () => {
+  document.title = "админ test";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 

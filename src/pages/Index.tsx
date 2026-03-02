@@ -5,6 +5,7 @@ import { useStopWords } from "@/contexts/StopWordsContext";
 import { PLACEHOLDER_WORDS } from "@/lib/words";
 
 const Index = () => {
+  document.title = "test";
   const { stopWords } = useStopWords();
 
   // Poll approved words from the server every 5 seconds
