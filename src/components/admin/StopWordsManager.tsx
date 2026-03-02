@@ -29,7 +29,7 @@ export function StopWordsManager() {
       <CardHeader>
         <CardTitle>Стоп-слова</CardTitle>
         <CardDescription>
-          Слова из этого списка не будут отображаться в башне.
+          Слова из этого списка не будут отображаться на странице.
           {stopWords.length > 0 && ` Активных фильтров: ${stopWords.length}`}
         </CardDescription>
       </CardHeader>
@@ -76,7 +76,7 @@ export function StopWordsManager() {
 
         {stopWords.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            Нет активных стоп-слов. Все слова отображаются в башне.
+            Нет активных стоп-слов. Все слова отображаются на странице.
           </p>
         )}
       </CardContent>

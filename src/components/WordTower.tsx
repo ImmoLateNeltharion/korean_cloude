@@ -328,7 +328,7 @@ const WordTower = ({ words }: WordTowerProps) => {
   if (tower.length === 0) {
     return (
       <div ref={containerRef} className="w-full h-full flex items-center justify-center py-20">
-        <p className="text-muted-foreground text-lg">Введите слово, чтобы начать строить башню</p>
+        <p className="text-muted-foreground text-lg">Загрузка...</p>
       </div>
     );
   }

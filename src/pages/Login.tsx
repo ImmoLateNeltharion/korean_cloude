@@ -49,7 +49,7 @@ const Login = () => {
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Lock className="h-6 w-6 text-muted-foreground" />
           </div>
-          <CardTitle>Word Tower Admin</CardTitle>
+          <CardTitle>admin test</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

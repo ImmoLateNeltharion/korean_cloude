@@ -25,7 +25,7 @@ const Admin = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Word Tower Admin</h1>
+            <h1 className="text-2xl font-bold tracking-tight">admin test</h1>
             <p className="text-sm text-muted-foreground">
               Управление контентом, статистика и мониторинг
             </p>
@@ -34,7 +34,7 @@ const Admin = () => {
             <Button variant="outline" asChild>
               <Link to="/">
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                К башне
+                На главную
               </Link>
             </Button>
             <Button variant="ghost" size="icon" onClick={handleLogout} title="Выйти">

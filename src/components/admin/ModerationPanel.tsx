@@ -81,7 +81,7 @@ export function ModerationPanel() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["approved-words"] });
-      toast.success("Слово удалено из башни");
+      toast.success("Слово удалено");
     },
     onError: () => toast.error("Ошибка при удалении"),
   });
@@ -192,7 +192,7 @@ export function ModerationPanel() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              В башне
+              Активные
               <Badge variant="secondary">{towerList.length}</Badge>
             </CardTitle>
           </CardHeader>
