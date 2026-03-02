@@ -1,11 +1,28 @@
 import { Bot } from "grammy";
 import { filterWord } from "./filter.js";
-import { insertWord } from "./db.js";
+import { insertWord, upsertUser, insertMessage } from "./db.js";
 
 let bot: Bot | null = null;
 
+export function getBot(): Bot | null {
+  return bot;
+}
+
 export function startBot(token: string) {
   bot = new Bot(token);
+
+  // Track every user interaction
+  bot.use((ctx, next) => {
+    if (ctx.from) {
+      upsertUser(
+        String(ctx.from.id),
+        ctx.from.username,
+        ctx.from.first_name,
+        ctx.from.last_name
+      );
+    }
+    return next();
+  });
 
   bot.command("start", (ctx) => {
     ctx.reply(
@@ -22,6 +39,9 @@ export function startBot(token: string) {
     const userId = String(ctx.from.id);
     const username = ctx.from.username || ctx.from.first_name || "anon";
     const text = ctx.message.text;
+
+    // Log every incoming message
+    insertMessage(userId, "incoming", text);
 
     const result = filterWord(text, userId);
 

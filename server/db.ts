@@ -25,6 +25,31 @@ export function getDB(): Database.Database {
       );
       CREATE INDEX IF NOT EXISTS idx_words_status ON words(status);
       CREATE INDEX IF NOT EXISTS idx_words_word ON words(word);
+
+      CREATE TABLE IF NOT EXISTS users (
+        telegram_user_id TEXT PRIMARY KEY,
+        username TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen_at);
+
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_user_id TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK(direction IN ('incoming','outgoing')),
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(telegram_user_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+
+      -- backfill users from existing words data
+      INSERT OR IGNORE INTO users (telegram_user_id, username)
+      SELECT DISTINCT telegram_user_id, telegram_username
+      FROM words WHERE telegram_user_id IS NOT NULL;
     `);
   }
   return _db;
@@ -105,4 +130,63 @@ export function getApprovedWordsMap(): Record<string, number> {
     map[row.word] = row.total;
   }
   return map;
+}
+
+// ─── Users & Messages ───────────────────────────────────
+
+export function upsertUser(
+  telegramUserId: string,
+  username?: string,
+  firstName?: string,
+  lastName?: string
+) {
+  const db = getDB();
+  db.prepare(`
+    INSERT INTO users (telegram_user_id, username, first_name, last_name)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(telegram_user_id) DO UPDATE SET
+      username = COALESCE(excluded.username, users.username),
+      first_name = COALESCE(excluded.first_name, users.first_name),
+      last_name = COALESCE(excluded.last_name, users.last_name),
+      last_seen_at = datetime('now')
+  `).run(telegramUserId, username || null, firstName || null, lastName || null);
+}
+
+export function getUsers() {
+  const db = getDB();
+  return db.prepare(`
+    SELECT u.telegram_user_id, u.username, u.first_name, u.last_name,
+           u.first_seen_at, u.last_seen_at,
+           (SELECT COUNT(*) FROM messages m WHERE m.telegram_user_id = u.telegram_user_id AND m.direction = 'incoming') as message_count
+    FROM users u
+    ORDER BY u.last_seen_at DESC
+  `).all();
+}
+
+export function insertMessage(
+  telegramUserId: string,
+  direction: "incoming" | "outgoing",
+  text: string
+) {
+  const db = getDB();
+  db.prepare(
+    "INSERT INTO messages (telegram_user_id, direction, text) VALUES (?, ?, ?)"
+  ).run(telegramUserId, direction, text);
+}
+
+export function getMessages(telegramUserId: string, limit = 50, offset = 0) {
+  const db = getDB();
+  return db.prepare(`
+    SELECT id, telegram_user_id, direction, text, created_at
+    FROM messages
+    WHERE telegram_user_id = ?
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(telegramUserId, limit, offset);
+}
+
+export function getAllUserIds(): string[] {
+  const db = getDB();
+  const rows = db.prepare("SELECT telegram_user_id FROM users").all() as { telegram_user_id: string }[];
+  return rows.map(r => r.telegram_user_id);
 }

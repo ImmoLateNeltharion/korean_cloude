@@ -1,7 +1,7 @@
 import express from "express";
 import { execSync } from "child_process";
-import { getPendingWords, approveWord, rejectWord, getApprovedWordsMap, deleteApprovedWord } from "./db.js";
-import { startBot } from "./bot.js";
+import { getPendingWords, approveWord, rejectWord, getApprovedWordsMap, deleteApprovedWord, getUsers, getMessages, insertMessage, getAllUserIds } from "./db.js";
+import { startBot, getBot } from "./bot.js";
 import { authMiddleware, loginHandler, logoutHandler, statusHandler } from "./auth.js";
 
 const app = express();
@@ -27,6 +27,7 @@ app.get("/api/words/approved", (_req, res) => {
 // ─── Protected endpoints (require auth) ─────────────────
 app.use("/api/words", authMiddleware);
 app.use("/api/docker", authMiddleware);
+app.use("/api/messages", authMiddleware);
 
 // ─── Docker status ──────────────────────────────────────
 app.get("/api/docker/status", (_req, res) => {
@@ -98,6 +99,65 @@ app.delete("/api/words/approved/:word", (req, res) => {
   } else {
     res.status(404).json({ error: "Word not found" });
   }
+});
+
+// ─── Messaging endpoints ─────────────────────────────────
+
+app.get("/api/messages/users", (_req, res) => {
+  try {
+    res.json(getUsers());
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
+app.get("/api/messages/:userId", (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 50;
+    const offset = Number(req.query.offset) || 0;
+    res.json(getMessages(req.params.userId, limit, offset));
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+});
+
+app.post("/api/messages/:userId/send", async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: "Message text is required" });
+
+  const botInstance = getBot();
+  if (!botInstance) return res.status(503).json({ error: "Bot is not running" });
+
+  try {
+    await botInstance.api.sendMessage(Number(req.params.userId), text.trim());
+    insertMessage(req.params.userId, "outgoing", text.trim());
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to send message" });
+  }
+});
+
+app.post("/api/messages/broadcast", async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: "Message text is required" });
+
+  const botInstance = getBot();
+  if (!botInstance) return res.status(503).json({ error: "Bot is not running" });
+
+  const userIds = getAllUserIds();
+  let sent = 0, failed = 0;
+
+  for (const userId of userIds) {
+    try {
+      await botInstance.api.sendMessage(Number(userId), text.trim());
+      insertMessage(userId, "outgoing", text.trim());
+      sent++;
+    } catch {
+      failed++;
+    }
+  }
+
+  res.json({ success: true, sent, failed, total: userIds.length });
 });
 
 // ─── Start server ───────────────────────────────────────

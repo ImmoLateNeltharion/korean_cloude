@@ -114,6 +114,8 @@ const WordTower = ({ words }: WordTowerProps) => {
   }, []);
 
   const tower = useMemo(() => {
+    if (!fontsReady) return [];
+
     const maxFontByWidth = containerWidth * 0.124;
     const maxFontByHeight = containerHeight / 18;
     const maxFontSize = Math.max(11, Math.min(maxFontByWidth, maxFontByHeight, 240));
@@ -379,6 +381,7 @@ const WordTower = ({ words }: WordTowerProps) => {
               lineHeight: 1.05,
               width: `${row.targetWidth}px`,
               minHeight: `${row.height}px`,
+              animation: `towerRowIn 0.5s ease-out ${(tower.length - 1 - ri) * 0.04}s both`,
             }}
           >
             {row.placedWords.map((w, wi) => (
