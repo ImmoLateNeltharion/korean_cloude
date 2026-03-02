@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,7 @@ import { Lock } from "lucide-react";
 
 const Login = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,6 +27,7 @@ const Login = () => {
       });
 
       if (res.ok) {
+        await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
         navigate("/admin");
       } else {
         setError("Неверный логин или пароль");
