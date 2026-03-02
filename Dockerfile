@@ -17,11 +17,10 @@ RUN npm ci --omit=dev
 FROM node:20-alpine
 RUN apk add --no-cache nginx docker-cli
 
-# nginx config — cover both possible include paths, remove defaults
+# nginx config — http.d is inside http{} block on Alpine; conf.d is top-level (no server{} allowed)
 RUN rm -f /etc/nginx/http.d/default.conf /etc/nginx/conf.d/default.conf 2>/dev/null; \
-    mkdir -p /etc/nginx/http.d /etc/nginx/conf.d
+    mkdir -p /etc/nginx/http.d
 COPY nginx.conf /etc/nginx/http.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Frontend static files
 COPY --from=frontend-build /app/dist /usr/share/nginx/html
