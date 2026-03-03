@@ -8,8 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, X, Loader2, Inbox, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { PLACEHOLDER_WORDS } from "@/lib/words";
-import { useStopWords } from "@/contexts/StopWordsContext";
 
 interface PendingWord {
   id: number;
@@ -22,7 +20,6 @@ interface PendingWord {
 
 export function ModerationPanel() {
   const queryClient = useQueryClient();
-  const { stopWords, addStopWord } = useStopWords();
 
   // ─── Pending words ────────────────────────────────────
   const { data: words = [], isLoading, error } = useQuery<PendingWord[]>({
@@ -69,16 +66,10 @@ export function ModerationPanel() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (word: string) => {
-      // Delete from DB if it exists there (ignore 404)
-      if (word in approvedMap) {
-        await fetch(`/api/words/approved/${encodeURIComponent(word)}`, { method: "DELETE" });
-      }
-      // Add to stop words to also remove placeholder words
-      if (PLACEHOLDER_WORDS[word] !== undefined) {
-        addStopWord(word);
-      }
-    },
+    mutationFn: (word: string) =>
+      fetch(`/api/words/approved/${encodeURIComponent(word)}`, { method: "DELETE" }).then((r) => {
+        if (!r.ok && r.status !== 404) throw new Error("Delete failed");
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["approved-words"] });
       toast.success("Слово удалено");
@@ -86,17 +77,10 @@ export function ModerationPanel() {
     onError: () => toast.error("Ошибка при удалении"),
   });
 
-  // Merge PLACEHOLDER_WORDS + approved, filter out stop words
+  // Active words on the tower (only real approved words from DB)
   const towerList = useMemo(() => {
-    const merged: Record<string, number> = { ...PLACEHOLDER_WORDS };
-    for (const [w, c] of Object.entries(approvedMap)) {
-      merged[w] = (merged[w] || 0) + c;
-    }
-    for (const sw of stopWords) {
-      delete merged[sw];
-    }
-    return Object.entries(merged).sort((a, b) => b[1] - a[1]);
-  }, [approvedMap, stopWords]);
+    return Object.entries(approvedMap).sort((a, b) => b[1] - a[1]);
+  }, [approvedMap]);
 
   // ─── Render ───────────────────────────────────────────
   if (isLoading) {
@@ -202,7 +186,6 @@ export function ModerationPanel() {
                 <TableRow>
                   <TableHead>Слово</TableHead>
                   <TableHead className="text-center">Частота</TableHead>
-                  <TableHead className="text-center">Источник</TableHead>
                   <TableHead className="text-right">Удалить</TableHead>
                 </TableRow>
               </TableHeader>
@@ -212,11 +195,6 @@ export function ModerationPanel() {
                     <TableCell className="font-medium">{word}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline">{count}</Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={word in approvedMap ? "default" : "secondary"} className="text-xs">
-                        {word in approvedMap ? "бот" : "базовое"}
-                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -71,12 +71,12 @@ export function MessagingPanel() {
     refetchInterval: 3_000,
   });
 
-  const messages = [...rawMessages].reverse(); // API returns DESC, we want ASC
+  const messages = useMemo(() => [...rawMessages].reverse(), [rawMessages]); // API returns DESC, we want ASC
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [rawMessages.length]);
 
   // ─── Send to user ─────────────────────────────────────
   const sendMutation = useMutation({

@@ -152,7 +152,8 @@ app.post("/api/messages/broadcast", async (req, res) => {
       await botInstance.api.sendMessage(Number(userId), text.trim());
       insertMessage(userId, "outgoing", text.trim());
       sent++;
-    } catch {
+    } catch (err: any) {
+      console.error(`Broadcast to ${userId} failed:`, err.message || err);
       failed++;
     }
   }

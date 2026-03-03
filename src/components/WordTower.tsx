@@ -1,5 +1,4 @@
 import { useMemo, useRef, useEffect, useState } from "react";
-import { FILLER_WORDS } from "@/lib/words";
 
 interface WordTowerProps {
   words: Record<string, number>;
@@ -50,9 +49,9 @@ function getMeasureSpan(): HTMLSpanElement {
   return _measureSpan;
 }
 
-function measureWord(word: string, fontSize: number, ratio: number, isFiller: boolean): number {
+function measureWord(word: string, fontSize: number, ratio: number): number {
   const span = getMeasureSpan();
-  const weight = isFiller ? 400 : (ratio > 0.6 ? 900 : ratio > 0.3 ? 700 : 600);
+  const weight = ratio > 0.6 ? 900 : ratio > 0.3 ? 700 : 600;
   span.style.fontWeight = String(weight);
   span.style.fontSize = `${fontSize}px`;
   span.textContent = word;
@@ -64,8 +63,6 @@ type PlacedWord = {
   word: string;
   fontSize: number;
   ratio: number;
-  isUser: boolean;
-  isFiller: boolean;
 };
 
 type TowerRow = {
@@ -77,28 +74,30 @@ type TowerRow = {
 
 const WordTower = ({ words }: WordTowerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(700);
-  const [containerHeight, setContainerHeight] = useState(600);
+  // Start at 0 — tower won't render until ResizeObserver provides real dimensions
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const [fontsReady, setFontsReady] = useState(false);
 
-  // Wait for fonts to load before measuring — this is critical!
-  // Without this, measureWord uses fallback sans-serif which is narrower than Montserrat,
-  // causing words to overflow their measured widths when the real font renders.
+  // Wait for fonts to load before measuring
   useEffect(() => {
-    document.fonts.ready.then(() => {
-      // Force-load Montserrat at all weights we use
+    let cancelled = false;
+    const init = async () => {
+      await document.fonts.ready;
       const weights = [400, 600, 700, 900];
-      Promise.all(
-        weights.map(w => document.fonts.load(`${w} 16px Montserrat`))
-      ).then(() => {
-        // Reset measurement span so it picks up the freshly loaded font
-        if (_measureSpan) {
-          _measureSpan.remove();
-          _measureSpan = null;
-        }
+      await Promise.all(weights.map(w => document.fonts.load(`${w} 16px Montserrat`)));
+      if (_measureSpan) { _measureSpan.remove(); _measureSpan = null; }
+      if (!cancelled) setFontsReady(true);
+    };
+    init();
+    // Fallback: if fonts.ready hangs, check after 500ms
+    const fallback = setTimeout(() => {
+      if (!cancelled && document.fonts.check('16px Montserrat')) {
+        if (_measureSpan) { _measureSpan.remove(); _measureSpan = null; }
         setFontsReady(true);
-      });
-    });
+      }
+    }, 500);
+    return () => { cancelled = true; clearTimeout(fallback); };
   }, []);
 
   useEffect(() => {
@@ -114,28 +113,40 @@ const WordTower = ({ words }: WordTowerProps) => {
   }, []);
 
   const tower = useMemo(() => {
-    if (!fontsReady) return [];
-
-    const maxFontByWidth = containerWidth * 0.124;
-    const maxFontByHeight = containerHeight / 18;
-    const maxFontSize = Math.max(11, Math.min(maxFontByWidth, maxFontByHeight, 240));
-    const minFontSize = Math.max(9, containerWidth * 0.014);
-    const numRows = 20;
+    // Don't render until both fonts loaded AND container measured
+    if (!fontsReady || containerWidth === 0 || containerHeight === 0) return [];
 
     const entries = Object.entries(words);
     if (entries.length === 0) return [];
 
+    const n = entries.length;
+    const numRows = 20;
+    const maxFontByWidth = containerWidth * 0.124;
+    const maxFontByHeight = containerHeight / 18;
+    const maxFontSize = Math.max(11, Math.min(maxFontByWidth, maxFontByHeight, 240));
+    const minFontSize = Math.max(9, containerWidth * 0.014);
+
     const maxCount = Math.max(...entries.map(([, c]) => c));
     const minCount = Math.min(...entries.map(([, c]) => c));
 
-    type WordEntry = { word: string; count: number; fontSize: number; ratio: number; isUser: boolean };
+    // Percentage-based sizing: scale fonts relative to word count
+    // Few words → bigger fonts to fill the tower; many words → smaller fonts
+    const idealTotalWords = 60;
+    const densityScale = Math.min(1.5, Math.max(0.5, Math.sqrt(idealTotalWords / n)));
+
+    // Flatten power curve when few words (more uniform sizes)
+    const power = 1 + Math.min(1.2, (n / 50) * 1.2);
+
+    type WordEntry = { word: string; count: number; fontSize: number; ratio: number };
 
     const allWords: WordEntry[] = entries.map(([word, count]) => {
-      const ratio = maxCount === minCount ? 0.5 : (count - minCount) / (maxCount - minCount);
-      // Power curve: only top 5-7 words get large sizes, rest are notably smaller
-      const sizeRatio = Math.pow(ratio, 2.2);
-      const fontSize = minFontSize + sizeRatio * (maxFontSize - minFontSize);
-      return { word, count, fontSize, ratio, isUser: word in words };
+      // Percentage-based: count/maxCount. Never 0 — even the smallest word stays visible.
+      // Old range formula (count-min)/(max-min) gave 0 for all count=1 words → invisible.
+      const ratio = count / maxCount;
+      const sizeRatio = Math.pow(ratio, power);
+      const baseFontSize = minFontSize + sizeRatio * (maxFontSize - minFontSize);
+      const fontSize = Math.min(maxFontSize, baseFontSize * densityScale);
+      return { word, count, fontSize, ratio };
     });
 
     allWords.sort((a, b) => b.count - a.count);
@@ -150,22 +161,23 @@ const WordTower = ({ words }: WordTowerProps) => {
       rows.push({ placedWords: [], targetWidth: Math.max(20, w), rowT: t, height: 0 });
     }
 
-    const GAP = 3; // must match CSS gap between words
+    const GAP = 3;
     const usedWidths = new Array(numRows).fill(0);
-    const wordCounts = new Array(numRows).fill(0); // track word count per row for gap calc
+    const wordCounts = new Array(numRows).fill(0);
 
-    // Find max font size that fits within availableWidth using binary search
-    function maxFontThatFits(word: string, availableWidth: number, maxSize: number, ratio: number, isFiller: boolean): number {
-      let lo = 7, hi = maxSize;
+    const MIN_FONT = 5;
+
+    function maxFontThatFits(word: string, availableWidth: number, maxSize: number, ratio: number): number {
+      let lo = MIN_FONT, hi = maxSize;
       for (let i = 0; i < 10; i++) {
         const mid = (lo + hi) / 2;
-        if (measureWord(word, mid, ratio, isFiller) <= availableWidth) lo = mid;
+        if (measureWord(word, mid, ratio) <= availableWidth) lo = mid;
         else hi = mid;
       }
       return Math.floor(lo);
     }
 
-    for (const entry of allWords) {
+    function placeWord(entry: WordEntry): boolean {
       let bestRow = -1;
       let bestScore = -Infinity;
 
@@ -174,9 +186,9 @@ const WordTower = ({ words }: WordTowerProps) => {
         const gapCost = wordCounts[r] > 0 ? GAP : 0;
         const remaining = row.targetWidth - usedWidths[r] - gapCost;
         if (remaining < 10) continue;
-        const maxFontForRow = maxFontThatFits(entry.word, remaining, entry.fontSize, entry.ratio, false);
-        const clampedSize = Math.min(entry.fontSize, Math.max(7, maxFontForRow));
-        const wordW = measureWord(entry.word, clampedSize, entry.ratio, false);
+        const maxFontForRow = maxFontThatFits(entry.word, remaining, entry.fontSize, entry.ratio);
+        const clampedSize = Math.min(entry.fontSize, Math.max(MIN_FONT, maxFontForRow));
+        const wordW = measureWord(entry.word, clampedSize, entry.ratio);
 
         if (usedWidths[r] + gapCost + wordW <= row.targetWidth) {
           const fillRatio = usedWidths[r] / row.targetWidth;
@@ -198,113 +210,89 @@ const WordTower = ({ words }: WordTowerProps) => {
         }
       }
 
-      if (bestRow === -1) continue;
+      if (bestRow === -1) return false;
 
       const row = rows[bestRow];
       const gapCost = wordCounts[bestRow] > 0 ? GAP : 0;
       const remaining = row.targetWidth - usedWidths[bestRow] - gapCost;
-      const maxFont = maxFontThatFits(entry.word, remaining, entry.fontSize, entry.ratio, false);
-      let fontSize = Math.max(7, Math.min(entry.fontSize, maxFont));
-      let wordW = measureWord(entry.word, fontSize, entry.ratio, false);
+      const maxFont = maxFontThatFits(entry.word, remaining, entry.fontSize, entry.ratio);
+      let fontSize = Math.max(MIN_FONT, Math.min(entry.fontSize, maxFont));
+      let wordW = measureWord(entry.word, fontSize, entry.ratio);
 
-      // Reduce font size step by step until word actually fits (handles measurement rounding)
-      while (wordW > remaining && fontSize > 7) {
+      while (wordW > remaining && fontSize > MIN_FONT) {
         fontSize--;
-        wordW = measureWord(entry.word, fontSize, entry.ratio, false);
+        wordW = measureWord(entry.word, fontSize, entry.ratio);
       }
 
-      // Skip word only if it truly doesn't fit even at minimum font size
-      if (wordW > remaining) continue;
+      if (wordW > remaining) return false;
 
-      row.placedWords.push({
-        word: entry.word,
-        fontSize,
-        ratio: entry.ratio,
-        isUser: entry.isUser,
-        isFiller: false,
-      });
+      row.placedWords.push({ word: entry.word, fontSize, ratio: entry.ratio });
       usedWidths[bestRow] += wordW + gapCost;
       wordCounts[bestRow]++;
       row.height = Math.max(row.height, fontSize * 1.3);
+      return true;
     }
 
-    // Fill remaining space with filler words
-    const fillerMinSize = Math.max(7, containerWidth * 0.008);
-    const fillerMaxSize = fillerMinSize + Math.max(3, containerWidth * 0.004);
-    let fillerIdx = 0;
+    // Pass 1: greedy placement
+    const unplaced: WordEntry[] = [];
+    for (const entry of allWords) {
+      if (!placeWord(entry)) unplaced.push(entry);
+    }
 
-    for (let r = 0; r < numRows; r++) {
-      const row = rows[r];
-      let used = usedWidths[r];
-      let wc = wordCounts[r];
-      let attempts = 0;
-
-      while (used < row.targetWidth - 8 && attempts < 50) {
-        const filler = FILLER_WORDS[fillerIdx % FILLER_WORDS.length];
-        fillerIdx++;
-        const fillerSize = fillerMinSize + Math.random() * (fillerMaxSize - fillerMinSize);
-        const fw = measureWord(filler, fillerSize, 0, true);
-        const gc = wc > 0 ? GAP : 0;
-
-        if (used + gc + fw <= row.targetWidth) {
-          row.placedWords.push({
-            word: filler, fontSize: fillerSize, ratio: 0,
-            isUser: false, isFiller: true,
-          });
-          used += gc + fw;
-          wc++;
-          if (row.height === 0) row.height = fillerSize * 1.2;
-        }
-        attempts++;
+    // Pass 2: force-place remaining words by expanding the widest rows
+    for (const entry of unplaced) {
+      // Find the row with most remaining space
+      let bestR = 0;
+      let maxRem = -Infinity;
+      for (let r = 0; r < numRows; r++) {
+        const gapCost = wordCounts[r] > 0 ? GAP : 0;
+        const rem = rows[r].targetWidth - usedWidths[r] - gapCost;
+        if (rem > maxRem) { maxRem = rem; bestR = r; }
       }
-      usedWidths[r] = used;
-      wordCounts[r] = wc;
-    }
-
-    for (let r = 0; r < numRows; r++) {
-      const row = rows[r];
-      if (row.placedWords.length === 0 && row.targetWidth > 15) {
-        let used = 0;
-        let wc = 0;
-        let attempts = 0;
-        while (used < row.targetWidth - 8 && attempts < 40) {
-          const filler = FILLER_WORDS[fillerIdx % FILLER_WORDS.length];
-          fillerIdx++;
-          const fillerSize = fillerMinSize + Math.random() * (fillerMaxSize - fillerMinSize) * 0.7;
-          const fw = measureWord(filler, fillerSize, 0, true);
-          const gc = wc > 0 ? GAP : 0;
-          if (used + gc + fw <= row.targetWidth) {
-            row.placedWords.push({
-              word: filler, fontSize: fillerSize, ratio: 0,
-              isUser: false, isFiller: true,
-            });
-            used += gc + fw;
-            wc++;
-            row.height = Math.max(row.height, fillerSize * 1.2);
-          }
-          attempts++;
-        }
+      // Force the word at MIN_FONT even if it overflows slightly
+      const row = rows[bestR];
+      const gapCost = wordCounts[bestR] > 0 ? GAP : 0;
+      const wordW = measureWord(entry.word, MIN_FONT, entry.ratio);
+      row.placedWords.push({ word: entry.word, fontSize: MIN_FONT, ratio: entry.ratio });
+      usedWidths[bestR] += wordW + gapCost;
+      wordCounts[bestR]++;
+      row.height = Math.max(row.height, MIN_FONT * 1.3);
+      // Expand row target so future words still have accurate remaining calc
+      if (usedWidths[bestR] > row.targetWidth) {
+        row.targetWidth = usedWidths[bestR];
       }
     }
 
-    // Shuffle words within each row so big/small words are mixed (like reference)
-    // Deterministic shuffle using row index as seed
-    for (let r = 0; r < rows.length; r++) {
-      const row = rows[r];
+    // Post-layout: if total height exceeds container, scale all fonts down
+    const filledRows = rows.filter(r => r.placedWords.length > 0);
+    const totalHeight = filledRows.reduce((sum, r) => sum + r.height, 0) + (filledRows.length - 1) * 2;
+    const maxTowerHeight = containerHeight * 0.92;
+    if (totalHeight > maxTowerHeight && totalHeight > 0) {
+      const scale = maxTowerHeight / totalHeight;
+      for (const row of filledRows) {
+        for (const pw of row.placedWords) {
+          pw.fontSize = Math.max(MIN_FONT, Math.round(pw.fontSize * scale));
+        }
+        row.height = Math.round(row.height * scale);
+      }
+    }
+
+    // Shuffle words within each row deterministically
+    for (let r = 0; r < filledRows.length; r++) {
+      const row = filledRows[r];
       if (row.placedWords.length <= 1) continue;
       let seed = r * 7 + 13;
       const seededRandom = () => {
         seed = (seed * 1103515245 + 12345) & 0x7fffffff;
         return (seed >> 16) / 32767;
       };
-      // Fisher-Yates shuffle with seeded random
       for (let i = row.placedWords.length - 1; i > 0; i--) {
         const j = Math.floor(seededRandom() * (i + 1));
         [row.placedWords[i], row.placedWords[j]] = [row.placedWords[j], row.placedWords[i]];
       }
     }
 
-    return rows.filter(r => r.placedWords.length > 0);
+    return filledRows;
   }, [words, containerWidth, containerHeight, fontsReady]);
 
   const { silhouettePath, svgHeight } = useMemo(() => {
@@ -325,15 +313,25 @@ const WordTower = ({ words }: WordTowerProps) => {
       silhouettePath: `M ${left.join(" L ")} L ${right.join(" L ")} Z`,
       svgHeight: h,
     };
-  }, [containerWidth]);
+  }, [containerWidth, containerHeight]);
 
-  if (tower.length === 0) {
+  // Loading state (fonts or container not ready)
+  if (!fontsReady || containerWidth === 0 || containerHeight === 0) {
     return (
-      <div ref={containerRef} className="w-full h-full flex items-center justify-center py-20">
+      <div ref={containerRef} className="w-full h-full flex items-center justify-center">
         <p className="text-muted-foreground text-lg">Загрузка...</p>
       </div>
     );
   }
+
+  // No words yet — show empty space (tower appears once words are added)
+  if (tower.length === 0) {
+    return (
+      <div ref={containerRef} className="w-full h-full" />
+    );
+  }
+
+  const towerWidth = Math.min(containerWidth * 0.85, containerHeight * 0.55);
 
   return (
     <div ref={containerRef} className="relative w-full h-full flex flex-col items-center justify-center py-2 select-none">
@@ -346,7 +344,7 @@ const WordTower = ({ words }: WordTowerProps) => {
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: `${Math.min(containerWidth * 0.85, containerHeight * 0.55) * 2.2}px`,
+            width: `${towerWidth * 2.2}px`,
             height: `${svgHeight * 1.6}px`,
             background: 'radial-gradient(ellipse 40% 50% at center, hsl(35 80% 40% / 0.35) 0%, hsl(30 70% 35% / 0.15) 40%, transparent 70%)',
           }}
@@ -354,13 +352,13 @@ const WordTower = ({ words }: WordTowerProps) => {
         {/* Blurred tower silhouette glow — uses SVG filter for soft edges */}
         <svg
           className="absolute pointer-events-none"
-          viewBox={`${-Math.min(containerWidth * 0.85, containerHeight * 0.55) * 0.5} ${-svgHeight * 0.3} ${Math.min(containerWidth * 0.85, containerHeight * 0.55) * 2} ${svgHeight * 1.6}`}
+          viewBox={`${-towerWidth * 0.5} ${-svgHeight * 0.3} ${towerWidth * 2} ${svgHeight * 1.6}`}
           preserveAspectRatio="xMidYMid meet"
           style={{
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: `${Math.min(containerWidth * 0.85, containerHeight * 0.55) * 2}px`,
+            width: `${towerWidth * 2}px`,
             height: `${svgHeight * 1.6}px`,
             overflow: 'visible',
           }}
@@ -375,7 +373,7 @@ const WordTower = ({ words }: WordTowerProps) => {
         {tower.map((row, ri) => (
           <div
             key={ri}
-            className="flex items-baseline justify-center"
+            className="relative flex items-baseline justify-center"
             style={{
               gap: "3px",
               lineHeight: 1.05,
@@ -384,37 +382,31 @@ const WordTower = ({ words }: WordTowerProps) => {
               animation: `towerRowIn 0.5s ease-out ${(tower.length - 1 - ri) * 0.04}s both`,
             }}
           >
-            {row.placedWords.map((w, wi) => (
-              <span
-                key={`${w.word}-${ri}-${wi}`}
-                className="whitespace-nowrap"
-                style={{
-                  fontSize: `${w.fontSize}px`,
-                  color: w.isFiller
-                    ? `hsl(30, 40%, 45%)`
-                    : (() => {
-                        // Seeded color variation: hue 25-50 (orange→gold→warm yellow)
-                        const h = wordHash(w.word);
-                        const hue = 25 + (h % 26);            // 25..50
-                        const sat = 70 + (h % 30);            // 70..99
-                        const lit = 48 + ((h >> 4) % 32);     // 48..79 (some whiter)
-                        return `hsl(${hue}, ${sat}%, ${lit}%)`;
-                      })(),
-                  textShadow: w.isFiller
-                    ? "none"
-                    : w.ratio > 0.5
+            {row.placedWords.map((w, wi) => {
+              const h = wordHash(w.word);
+              const hue = 25 + (h % 26);
+              const sat = 70 + (h % 30);
+              const lit = 48 + ((h >> 4) % 32);
+              return (
+                <span
+                  key={`${w.word}-${ri}-${wi}`}
+                  className="whitespace-nowrap"
+                  style={{
+                    fontSize: `${w.fontSize}px`,
+                    color: `hsl(${hue}, ${sat}%, ${lit}%)`,
+                    textShadow: w.ratio > 0.5
                       ? `0 0 ${8 + w.ratio * 25}px hsl(35 95% 55% / 0.6), 0 0 ${w.ratio * 50}px hsl(30 90% 45% / 0.3), 0 0 ${w.ratio * 80}px hsl(25 80% 40% / 0.15)`
                       : w.ratio > 0.2
                         ? `0 0 ${6 + w.ratio * 16}px hsl(35 90% 55% / 0.4), 0 0 ${w.ratio * 35}px hsl(30 85% 45% / 0.2)`
                         : `0 0 6px hsl(35 80% 55% / 0.25)`,
-                  fontWeight: w.isFiller ? 400 : (w.ratio > 0.6 ? 900 : w.ratio > 0.3 ? 700 : 600),
-                  opacity: w.isFiller ? 0.4 : (w.isUser ? 1 : 0.8),
-                  lineHeight: 1.0,
-                }}
-              >
-                {w.word}
-              </span>
-            ))}
+                    fontWeight: w.ratio > 0.6 ? 900 : w.ratio > 0.3 ? 700 : 600,
+                    lineHeight: 1.0,
+                  }}
+                >
+                  {w.word}
+                </span>
+              );
+            })}
           </div>
         ))}
       </div>
