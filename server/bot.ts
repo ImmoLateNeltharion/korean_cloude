@@ -62,7 +62,23 @@ export function startBot(token: string) {
     }
   });
 
-  bot.start({ drop_pending_updates: true });
+  const tryStart = async (retries = 0) => {
+    try {
+      await bot!.start({ drop_pending_updates: true });
+    } catch (err: any) {
+      if (err?.error_code === 409) {
+        const delay = Math.min(5000 * (retries + 1), 30000);
+        console.warn(`⚠️ Bot conflict (409), retrying in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        if (bot) await tryStart(retries + 1);
+      } else {
+        console.error("❌ Bot error:", err?.message || err);
+        process.exit(1);
+      }
+    }
+  };
+
+  tryStart();
   console.log("🤖 Telegram bot started");
 
   return bot;
