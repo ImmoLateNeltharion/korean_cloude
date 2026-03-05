@@ -336,41 +336,41 @@ const WordTower = ({ words }: WordTowerProps) => {
 
   return (
     <div ref={containerRef} className="relative w-full h-full flex flex-col items-center justify-end pb-8 select-none">
-      {/* Word rows with glow behind */}
+      {/* Soft radial ambient glow — fixed to full container */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: `${towerWidth * 2.2}px`,
+          height: `${svgHeight * 1.6}px`,
+          background: 'radial-gradient(ellipse 40% 50% at center, hsl(35 80% 40% / 0.35) 0%, hsl(30 70% 35% / 0.15) 40%, transparent 70%)',
+        }}
+      />
+      {/* Blurred tower silhouette glow — fixed to full container */}
+      <svg
+        className="absolute pointer-events-none"
+        viewBox={`${-towerWidth * 0.5} ${-svgHeight * 0.3} ${towerWidth * 2} ${svgHeight * 1.6}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: `${towerWidth * 2}px`,
+          height: `${svgHeight * 1.6}px`,
+          overflow: 'visible',
+        }}
+      >
+        <defs>
+          <filter id="towerGlow" x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="35" />
+          </filter>
+        </defs>
+        <path d={silhouettePath} fill="hsl(35 85% 45%)" stroke="none" filter="url(#towerGlow)" opacity="0.4" />
+      </svg>
+      {/* Word rows */}
       <div className="relative flex flex-col items-center" style={{ gap: '2px' }}>
-        {/* Soft radial ambient glow behind tower */}
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: `${towerWidth * 2.2}px`,
-            height: `${svgHeight * 1.6}px`,
-            background: 'radial-gradient(ellipse 40% 50% at center, hsl(35 80% 40% / 0.35) 0%, hsl(30 70% 35% / 0.15) 40%, transparent 70%)',
-          }}
-        />
-        {/* Blurred tower silhouette glow — uses SVG filter for soft edges */}
-        <svg
-          className="absolute pointer-events-none"
-          viewBox={`${-towerWidth * 0.5} ${-svgHeight * 0.3} ${towerWidth * 2} ${svgHeight * 1.6}`}
-          preserveAspectRatio="xMidYMid meet"
-          style={{
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: `${towerWidth * 2}px`,
-            height: `${svgHeight * 1.6}px`,
-            overflow: 'visible',
-          }}
-        >
-          <defs>
-            <filter id="towerGlow" x="-80%" y="-80%" width="260%" height="260%">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="35" />
-            </filter>
-          </defs>
-          <path d={silhouettePath} fill="hsl(35 85% 45%)" stroke="none" filter="url(#towerGlow)" opacity="0.4" />
-        </svg>
         {tower.map((row, ri) => (
           <div
             key={ri}
