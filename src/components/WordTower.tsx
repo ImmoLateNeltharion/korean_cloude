@@ -352,6 +352,18 @@ const WordTower = ({ words }: WordTowerProps) => {
 
   const towerWidth = Math.min(containerWidth * 0.85, containerHeight * 0.68);
 
+  // Random assembly order: shuffle row delay indices with deterministic seed
+  const rowDelays = (() => {
+    const indices = Array.from({ length: tower.length }, (_, i) => i);
+    let s = 0x9e3779b9;
+    const rand = () => { s = ((s ^ (s << 13)) ^ (s >>> 17) ^ (s << 5)) >>> 0; return s / 0xffffffff; };
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices; // rowDelays[ri] = appearance order rank
+  })();
+
   return (
     <div ref={containerRef} className="relative w-full h-full flex flex-col items-center justify-end pb-8 select-none">
       {/* Soft radial ambient glow — fixed to full container */}
@@ -398,7 +410,7 @@ const WordTower = ({ words }: WordTowerProps) => {
               lineHeight: 1.05,
               width: `${row.targetWidth}px`,
               minHeight: `${row.height}px`,
-              animation: `towerRowIn 0.6s ease-out ${(tower.length - 1 - ri) * 0.15}s both`,
+              animation: `towerRowIn 0.7s ease-out ${rowDelays[ri] * 0.2}s both`,
               '--rise-dist': `${(tower.length - 1 - ri) * 50 + 40}px`,
             } as React.CSSProperties}
           >
