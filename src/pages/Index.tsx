@@ -1,13 +1,46 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { QRCodeSVG } from 'qrcode.react';
 import WordTower from "@/components/WordTower";
-import { DownloadButtons } from "@/components/DownloadButtons";
 import { useStopWords } from "@/contexts/StopWordsContext";
 import { getAllStopWords } from "@/lib/stop-words";
+import { downloadPNG, downloadHTML } from "@/lib/download-snapshot";
+
+const QR_KEY = 'wordtower-qr-url';
+const QR_FALLBACK = 'https://t.me/YourBotUsername';
 
 const Index = () => {
   document.title = "test";
   const { stopWords } = useStopWords();
+
+  // Dynamic QR URL from localStorage (syncs across tabs via storage event)
+  const [qrUrl, setQrUrl] = useState(() =>
+    localStorage.getItem(QR_KEY) || QR_FALLBACK
+  );
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === QR_KEY) setQrUrl(e.newValue || QR_FALLBACK);
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  // Auto-download snapshot when opened with ?snapshot=png|html
+  const snapshotDone = useRef(false);
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get('snapshot');
+    if (!param || snapshotDone.current) return;
+    snapshotDone.current = true;
+    const timer = setTimeout(async () => {
+      try {
+        if (param === 'png') await downloadPNG();
+        else if (param === 'html') await downloadHTML();
+      } finally {
+        window.close();
+      }
+    }, 2500); // wait for tower to paint
+    return () => clearTimeout(timer);
+  }, []);
 
   // Poll approved words from the server every 5 seconds
   const { data: approvedWords = {} } = useQuery<Record<string, number>>({
@@ -46,22 +79,29 @@ const Index = () => {
         style={{ background: 'linear-gradient(to bottom, rgba(5,5,10,0.82) 0%, rgba(5,5,10,0.65) 50%, rgba(5,5,10,0.45) 100%)' }}
       />
 
-      {/* QR code — top right */}
-      <img
-        src="/vatech-qr.png"
-        alt="QR"
-        className="absolute z-20 top-5 right-5 pointer-events-none"
-        style={{ height: '90px', width: '90px', objectFit: 'contain', borderRadius: '6px' }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-      />
+      {/* QR code — top right, dynamic */}
+      <div
+        className="absolute z-20 top-4 right-4 pointer-events-none"
+        style={{
+          background: 'rgba(255,255,255,0.92)',
+          borderRadius: '8px',
+          padding: '6px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
+        }}
+      >
+        <QRCodeSVG
+          value={qrUrl}
+          size={150}
+          bgColor="transparent"
+          fgColor="#0a0a0a"
+          level="M"
+        />
+      </div>
 
       {/* Tower fills the remaining screen */}
       <div className="relative z-10 flex-1 min-h-0 w-full">
         <WordTower words={filteredWords} />
       </div>
-
-      {/* Download snapshot buttons */}
-      <DownloadButtons />
     </div>
   );
 };
