@@ -54,8 +54,8 @@ function measureWord(word: string, fontSize: number, _ratio: number): number {
   span.style.fontWeight = '400';
   span.style.fontSize = `${fontSize}px`;
   span.textContent = word;
-  // 3% safety margin + 2px flat — handles sub-pixel rounding at all font sizes
-  return Math.ceil(span.offsetWidth * 1.03) + 2;
+  // 5% safety margin + 2px flat — handles sub-pixel rounding at all font sizes
+  return Math.ceil(span.offsetWidth * 1.05) + 2;
 }
 
 type PlacedWord = {
@@ -83,7 +83,6 @@ const WordTower = ({ words }: WordTowerProps) => {
     let cancelled = false;
     const init = async () => {
       await document.fonts.ready;
-      const weights = [400, 600, 700, 900];
       await document.fonts.load('400 16px Vatech');
       if (_measureSpan) { _measureSpan.remove(); _measureSpan = null; }
       if (!cancelled) setFontsReady(true);
@@ -139,10 +138,13 @@ const WordTower = ({ words }: WordTowerProps) => {
     type WordEntry = { word: string; count: number; fontSize: number; ratio: number };
 
     const allWords: WordEntry[] = entries.map(([word, count]) => {
-      // Percentage-based: count/maxCount. Never 0 — even the smallest word stays visible.
-      // Old range formula (count-min)/(max-min) gave 0 for all count=1 words → invisible.
-      const ratio = count / maxCount;
-      const sizeRatio = Math.pow(ratio, power);
+      const ratio = count / maxCount; // for glow/color only
+      // Logarithmic scale: rare words stay readable but clearly smaller than frequent ones
+      // log(count+1)/log(maxCount+1) compresses the range so even count=1 gets ~30-40% of max
+      const logCount = Math.log(count + 1);
+      const logMax = Math.log(maxCount + 1);
+      const logRatio = logMax > 0 ? logCount / logMax : 1;
+      const sizeRatio = Math.pow(logRatio, power);
       // densityScale boosts only the range portion, not the minimum — preserves contrast
       const fontSize = Math.min(maxFontSize, minFontSize + sizeRatio * (maxFontSize - minFontSize) * densityScale);
       return { word, count, fontSize, ratio };
@@ -266,8 +268,8 @@ const WordTower = ({ words }: WordTowerProps) => {
     // Post-layout: scale fonts to fill container height (both up and down)
     const filledRows = rows.filter(r => r.placedWords.length > 0);
     const totalHeight = filledRows.reduce((sum, r) => sum + r.height, 0) + (filledRows.length - 1) * 2;
-    const maxTowerHeight = containerHeight * 0.92;
-    const minTowerHeight = containerHeight * 0.82;
+    const maxTowerHeight = containerHeight * 0.97;
+    const minTowerHeight = containerHeight * 0.90;
 
     if (totalHeight > maxTowerHeight && totalHeight > 0) {
       // Scale DOWN: tower overflows container
@@ -290,7 +292,8 @@ const WordTower = ({ words }: WordTowerProps) => {
             pw.fontSize = Math.round(pw.fontSize * scaleUp);
           }
           row.height = Math.round(row.height * scaleUp);
-          row.targetWidth = Math.round(row.targetWidth * scaleUp);
+          // Keep targetWidth bounded by tower profile so words stay inside silhouette
+          row.targetWidth = Math.round(towerProfile(row.rowT) * towerWidth);
         }
       }
     }
@@ -364,7 +367,7 @@ const WordTower = ({ words }: WordTowerProps) => {
   })();
 
   return (
-    <div ref={containerRef} className="relative w-full h-full flex flex-col items-center justify-end pb-8 select-none">
+    <div ref={containerRef} className="relative w-full h-full flex flex-col items-center justify-end pb-2 select-none">
       {/* Soft radial ambient glow — fixed to full container */}
       <div
         className="absolute pointer-events-none"
