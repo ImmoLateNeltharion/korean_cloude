@@ -40,31 +40,36 @@ export function QRWithLogo({ url, size = 150 }: QRWithLogoProps) {
       // Draw logo centered, maintaining aspect ratio
       const logo = new Image();
       logo.onload = () => {
-        const circleR = px * 0.13; // radius of backdrop circle
         const cx = px / 2;
         const cy = px / 2;
 
-        // Dark circle backdrop
-        ctx.beginPath();
-        ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(8, 8, 12, 0.90)";
-        ctx.fill();
-
-        // Thin amber ring around backdrop
-        ctx.beginPath();
-        ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(255, 190, 80, 0.55)";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Fit logo inside circle while preserving aspect ratio
-        const maxW = circleR * 1.5;
-        const maxH = circleR * 1.2;
+        // Fit logo maintaining aspect ratio
+        const maxW = px * 0.28;
+        const maxH = px * 0.14;
         const aspect = logo.naturalWidth / logo.naturalHeight;
         let lw = maxW, lh = maxW / aspect;
         if (lh > maxH) { lh = maxH; lw = maxH * aspect; }
+        const pad = 6;
 
+        // Punch a rounded-rect hole in the QR (use destination-out)
+        ctx.globalCompositeOperation = "destination-out";
+        const rx = cx - lw / 2 - pad, ry = cy - lh / 2 - pad;
+        const rw = lw + pad * 2, rh = lh + pad * 2, r = 6;
+        ctx.beginPath();
+        ctx.moveTo(rx + r, ry);
+        ctx.lineTo(rx + rw - r, ry); ctx.arcTo(rx + rw, ry, rx + rw, ry + r, r);
+        ctx.lineTo(rx + rw, ry + rh - r); ctx.arcTo(rx + rw, ry + rh, rx + rw - r, ry + rh, r);
+        ctx.lineTo(rx + r, ry + rh); ctx.arcTo(rx, ry + rh, rx, ry + rh - r, r);
+        ctx.lineTo(rx, ry + r); ctx.arcTo(rx, ry, rx + r, ry, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+
+        // Draw logo with amber glow
+        ctx.shadowColor = "rgba(255,190,80,0.6)";
+        ctx.shadowBlur = 8;
         ctx.drawImage(logo, cx - lw / 2, cy - lh / 2, lw, lh);
+        ctx.shadowBlur = 0;
       };
       logo.src = "/vatech-logo.png";
     };
