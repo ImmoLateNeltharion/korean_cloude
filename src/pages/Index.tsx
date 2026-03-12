@@ -14,8 +14,25 @@ const Index = () => {
   document.title = "test";
   const { stopWords } = useStopWords();
 
-  // Responsive QR size: scales with screen width, capped at 300px for large screens
-  const qrSize = Math.max(160, Math.min(300, Math.floor(window.innerWidth * 0.16)));
+  // QR size = space between tower edge and screen edge (tower is centered)
+  // towerWidth = min(W*0.85, H*0.68), available right gap = (W - towerWidth) / 2
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [qrSize, setQrSize] = useState(160);
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const compute = () => {
+      const W = el.clientWidth;
+      const H = el.clientHeight;
+      const towerW = Math.min(W * 0.85, H * 0.68);
+      const available = Math.floor((W - towerW) / 2) - 12;
+      setQrSize(Math.max(120, available));
+    };
+    compute();
+    const obs = new ResizeObserver(compute);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   // Dynamic QR URL from localStorage (syncs across tabs via storage event)
   const [qrUrl, setQrUrl] = useState(() =>
@@ -67,6 +84,7 @@ const Index = () => {
 
   return (
     <div
+      ref={mainRef}
       className="h-screen relative flex flex-col overflow-hidden"
       style={{
         height: '100dvh',
