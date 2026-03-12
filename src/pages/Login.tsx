@@ -27,7 +27,7 @@ const Login = () => {
       });
 
       if (res.ok) {
-        await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+        await queryClient.refetchQueries({ queryKey: ["auth-status"] });
         navigate("/admin");
       } else {
         setError("Неверный логин или пароль");
