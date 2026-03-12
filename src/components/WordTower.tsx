@@ -298,6 +298,13 @@ const WordTower = ({ words }: WordTowerProps) => {
       }
     }
 
+    // Drop words that ended up below readable minimum after scaling
+    // (happens when narrow rows force-shrink words to MIN_FONT level)
+    const readableMin = Math.max(11, Math.round(minFontSize * 0.8));
+    for (const row of filledRows) {
+      row.placedWords = row.placedWords.filter(pw => pw.fontSize >= readableMin);
+    }
+
     // Shuffle words within each row deterministically
     for (let r = 0; r < filledRows.length; r++) {
       const row = filledRows[r];
@@ -313,7 +320,7 @@ const WordTower = ({ words }: WordTowerProps) => {
       }
     }
 
-    return filledRows;
+    return filledRows.filter(r => r.placedWords.length > 0);
   }, [words, containerWidth, containerHeight, fontsReady]);
 
   const { silhouettePath, svgHeight } = useMemo(() => {
