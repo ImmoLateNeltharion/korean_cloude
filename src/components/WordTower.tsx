@@ -135,15 +135,12 @@ const WordTower = ({ words }: WordTowerProps) => {
 
     const allWords: WordEntry[] = entries.map(([word, count]) => {
       const ratio = count / maxCount; // for glow/color only
-      const logCount = Math.log(count + 1);
-      const logMax = Math.log(maxCount + 1);
-      const logRatio = logMax > 0 ? logCount / logMax : 1;
-      // Midpoint sizing: base size is the "neutral" reference the user sees.
-      // Words spread ±35% around base depending on frequency:
-      //   most frequent → 1.35× base, least frequent → 0.65× base
-      const baseFont = Math.min(maxFontSize, minFontSize + (maxFontSize - minFontSize) * 0.75 * densityScale);
-      const sizeMult = 0.65 + 0.70 * logRatio;
-      const fontSize = Math.max(minFontSize, Math.min(maxFontSize, baseFont * sizeMult));
+      // Linear scale: most frequent word gets ~1.3× maxFont, rarest gets minFont.
+      // This ensures visible size difference (e.g. count=6 vs count=1 → ~2.4× size ratio).
+      const linearRatio = count / maxCount;
+      const fontSize = Math.max(minFontSize, Math.round(
+        minFontSize + linearRatio * (maxFontSize * 1.3 - minFontSize) * densityScale * 0.65
+      ));
       return { word, count, fontSize, ratio };
     });
 
