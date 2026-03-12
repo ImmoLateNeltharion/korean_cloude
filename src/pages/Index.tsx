@@ -4,6 +4,7 @@ import WordTower from "@/components/WordTower";
 import { useStopWords } from "@/contexts/StopWordsContext";
 import { getAllStopWords } from "@/lib/stop-words";
 import { downloadPNG, downloadHTML } from "@/lib/download-snapshot";
+import { DownloadButtons } from "@/components/DownloadButtons";
 
 const QR_KEY = 'wordtower-qr-url';
 const QR_FALLBACK = 'https://t.me/YourBotUsername';
@@ -93,6 +94,9 @@ const Index = () => {
       <div className="relative z-10 flex-1 min-h-0 w-full">
         <WordTower words={filteredWords} />
       </div>
+
+      {/* Download buttons — bottom left overlay */}
+      <DownloadButtons />
     </div>
   );
 };
