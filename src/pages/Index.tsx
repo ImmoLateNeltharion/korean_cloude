@@ -5,6 +5,7 @@ import { useStopWords } from "@/contexts/StopWordsContext";
 import { getAllStopWords } from "@/lib/stop-words";
 import { downloadPNG, downloadHTML } from "@/lib/download-snapshot";
 import { DownloadButtons } from "@/components/DownloadButtons";
+import { QRWithLogo } from "@/components/QRWithLogo";
 
 const QR_KEY = 'wordtower-qr-url';
 const QR_FALLBACK = 'https://t.me/YourBotUsername';
@@ -80,15 +81,9 @@ const Index = () => {
       />
 
       {/* QR code — top right, dynamic */}
-      <img
-        className="absolute z-20 top-4 right-4 pointer-events-none"
-        src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qrUrl)}&size=300x300&margin=6`}
-        width={150}
-        height={150}
-        alt="QR"
-        style={{ borderRadius: '8px', boxShadow: '0 2px 12px rgba(0,0,0,0.5)' }}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-      />
+      <div className="absolute z-20 top-4 right-4 pointer-events-none">
+        <QRWithLogo url={qrUrl} size={150} />
+      </div>
 
       {/* Tower fills the remaining screen */}
       <div className="relative z-10 flex-1 min-h-0 w-full">
