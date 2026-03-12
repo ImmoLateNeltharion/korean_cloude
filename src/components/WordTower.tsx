@@ -285,7 +285,7 @@ const WordTower = ({ words }: WordTowerProps) => {
       // Scale UP: tower too small, grow to fill vertical space
       const widestRow = Math.max(...filledRows.map(r => r.targetWidth));
       const maxScaleByWidth = widestRow > 0 ? (containerWidth * 0.90) / widestRow : 1;
-      const scaleUp = Math.min(minTowerHeight / totalHeight, maxScaleByWidth);
+      const scaleUp = Math.min(minTowerHeight / totalHeight, maxScaleByWidth, 2.2);
       if (scaleUp > 1.05) {
         for (const row of filledRows) {
           for (const pw of row.placedWords) {
