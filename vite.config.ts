@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
@@ -14,36 +14,45 @@ const mockWords = {
 };
 
 // https://vitejs.dev/config/
-export default defineConfig(() => ({
-  server: {
-    host: "::",
-    port: 8080,
-    hmr: {
-      overlay: false,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const useMockApi = env.VITE_MOCK_API === "1";
+
+  return {
+    server: {
+      host: "::",
+      port: 8080,
+      hmr: {
+        overlay: false,
+      },
+      proxy: {
+        "/api": {
+          target: "http://localhost:3002",
+          changeOrigin: true,
+        },
+      },
+      middlewareMode: false,
     },
-    proxy: {
-      "/api": {
-        target: "http://localhost:3002",
-        changeOrigin: true,
+    plugins: [
+      react(),
+      ...(useMockApi
+        ? [
+            {
+              name: "mock-api",
+              configureServer(server) {
+                server.middlewares.use("/api/words/approved", (_req, res) => {
+                  res.setHeader("Content-Type", "application/json");
+                  res.end(JSON.stringify(mockWords));
+                });
+              },
+            },
+          ]
+        : []),
+    ],
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
       },
     },
-    middlewareMode: false,
-  },
-  plugins: [
-    react(),
-    {
-      name: "mock-api",
-      configureServer(server) {
-        server.middlewares.use("/api/words/approved", (_req, res) => {
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify(mockWords));
-        });
-      },
-    },
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
-}));
+  };
+});

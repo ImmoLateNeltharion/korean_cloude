@@ -24,9 +24,8 @@ const Index = () => {
     const compute = () => {
       const W = el.clientWidth;
       const H = el.clientHeight;
-      const towerW = Math.min(W * 0.85, H * 0.68);
-      const available = Math.floor((W - towerW) / 2) + 30;
-      setQrSize(Math.max(150, available));
+      const base = Math.round(Math.min(W, H) * 0.34);
+      setQrSize(Math.max(220, Math.min(420, base)));
     };
     compute();
     const obs = new ResizeObserver(compute);
@@ -108,7 +107,7 @@ const Index = () => {
 
       {/* Tower fills the remaining screen */}
       <div className="relative z-10 flex-1 min-h-0 w-full">
-        <WordTower words={filteredWords} />
+        <WordTower words={filteredWords} qrSize={qrSize} />
       </div>
 
       {/* Download buttons — bottom left overlay */}
