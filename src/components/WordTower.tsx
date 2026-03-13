@@ -22,6 +22,26 @@ type PlacedWord = {
   box: { left: number; top: number; right: number; bottom: number };
 };
 
+type QRAvoidArea = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  cx: number;
+  cy: number;
+  r: number;
+};
+
+type MapTransform = {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  scale: number;
+  originX: number;
+  originY: number;
+};
+
 const BRAND_PALETTE: [number, number, number][] = [
   [352, 85, 55],
   [0, 5, 82],
@@ -36,18 +56,14 @@ const BRAND_PALETTE: [number, number, number][] = [
 const QR_MARGIN = 6;
 const QR_BREATHING = 4;
 const WORD_GAP = 1;
-const GLOBAL_FONT_SCALE = 1.34;
+const GLOBAL_FONT_SCALE = 1.15;
 const SILHOUETTE_SCALE = 0.92;
 const MAP_PAD_X = 6;
 const MAP_PAD_Y = 6;
-const CANDIDATE_TARGET = 1500;
-const CANDIDATE_MAX_TRIES = 25000;
 
 let measureCanvas: HTMLCanvasElement | null = null;
 function getMeasureCtx(): CanvasRenderingContext2D | null {
-  if (!measureCanvas) {
-    measureCanvas = document.createElement("canvas");
-  }
+  if (!measureCanvas) measureCanvas = document.createElement("canvas");
   return measureCanvas.getContext("2d");
 }
 
@@ -60,12 +76,30 @@ function hashWord(word: string): number {
   return h >>> 0;
 }
 
-function seeded(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = Math.imul(1664525, s) + 1013904223;
-    return ((s >>> 0) & 0xffffffff) / 0x100000000;
-  };
+function gcd(a: number, b: number): number {
+  let x = Math.abs(Math.trunc(a));
+  let y = Math.abs(Math.trunc(b));
+  while (y !== 0) {
+    const t = x % y;
+    x = y;
+    y = t;
+  }
+  return x || 1;
+}
+
+function modPos(n: number, m: number): number {
+  if (m <= 0) return 0;
+  return ((n % m) + m) % m;
+}
+
+function coprimeStep(mod: number, seed: number): number {
+  if (mod <= 1) return 1;
+  let step = (modPos(seed, mod - 1) + 1) | 1;
+  while (gcd(step, mod) !== 1) {
+    step += 2;
+    if (step >= mod) step = (step % mod) || 1;
+  }
+  return step;
 }
 
 function pointInPolygon(x: number, y: number, polygon: [number, number][]): boolean {
@@ -73,8 +107,7 @@ function pointInPolygon(x: number, y: number, polygon: [number, number][]): bool
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const [xi, yi] = polygon[i];
     const [xj, yj] = polygon[j];
-    const intersects = yi > y !== yj > y
-      && x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-9) + xi;
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-9) + xi;
     if (intersects) inside = !inside;
   }
   return inside;
@@ -92,20 +125,9 @@ function polygonCentroid(poly: [number, number][]): [number, number] {
 
 const ACTIVE_KOREA_SHAPES = KOREA_SHAPES.filter((poly) => {
   const [cx, cy] = polygonCentroid(poly);
-  // Remove the small top-left island near the DPRK border area.
   if (cx < -0.65 && cy < -0.75) return false;
   return true;
 });
-
-type MapTransform = {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-  scale: number;
-  originX: number;
-  originY: number;
-};
 
 const SHAPE_BOUNDS = (() => {
   let minX = Infinity;
@@ -146,7 +168,7 @@ function buildMapTransform(width: number, height: number): MapTransform {
 
 function shapeToScreen(nx: number, ny: number, tr: MapTransform): [number, number] {
   const x = tr.originX + (nx - tr.minX) * tr.scale;
-  const y = tr.originY + (tr.maxY - ny) * tr.scale; // flip to screen coords
+  const y = tr.originY + (tr.maxY - ny) * tr.scale;
   return [x, y];
 }
 
@@ -171,8 +193,7 @@ function measureWordWidth(word: string, fontSize: number): number {
   const ctx = getMeasureCtx();
   if (!ctx) return Math.max(word.length * fontSize * 0.58, fontSize * 1.8);
   ctx.font = `400 ${fontSize}px Vatech, sans-serif`;
-  const measured = ctx.measureText(word).width;
-  return Math.ceil(measured * 1.06) + 2;
+  return Math.ceil(ctx.measureText(word).width * 1.06) + 2;
 }
 
 function boxFitsShape(
@@ -197,100 +218,47 @@ function boxFitsShape(
     const [nx, ny] = screenToShape(px, py, tr);
     if (isInKoreaShape(nx, ny)) inside++;
   }
-
   return inside >= minInside;
 }
 
-function canShiftAll(
-  words: PlacedWord[],
-  dx: number,
-  dy: number,
-  width: number,
-  height: number,
-  qrBox: { left: number; top: number; right: number; bottom: number }
+function boxIntersectsCircle(
+  box: { left: number; top: number; right: number; bottom: number },
+  cx: number,
+  cy: number,
+  r: number
 ): boolean {
-  for (const w of words) {
-    const shifted = {
-      left: w.box.left + dx,
-      right: w.box.right + dx,
-      top: w.box.top + dy,
-      bottom: w.box.bottom + dy,
-    };
-    if (shifted.left < 4 || shifted.right > width - 4 || shifted.top < 4 || shifted.bottom > height - 4) {
-      return false;
-    }
-    if (rectsOverlap(shifted, qrBox)) return false;
-  }
-  return true;
+  const nearestX = Math.max(box.left, Math.min(cx, box.right));
+  const nearestY = Math.max(box.top, Math.min(cy, box.bottom));
+  const dx = nearestX - cx;
+  const dy = nearestY - cy;
+  return dx * dx + dy * dy < r * r;
 }
 
-function canApplyScale(
-  words: PlacedWord[],
-  scale: number,
-  width: number,
-  height: number,
-  tr: MapTransform,
-  qrBox: { left: number; top: number; right: number; bottom: number }
-): { boxes: { left: number; top: number; right: number; bottom: number }[]; sizes: number[] } | null {
-  const boxes: { left: number; top: number; right: number; bottom: number }[] = [];
-  const sizes: number[] = [];
-
-  for (const w of words) {
-    const fontSize = Math.max(9, Math.round(w.fontSize * scale));
-    const wordWidth = measureWordWidth(w.word, fontSize);
-    const wordHeight = Math.ceil(fontSize * 1.14);
-    const box = {
-      left: w.x - wordWidth / 2 - WORD_GAP,
-      right: w.x + wordWidth / 2 + WORD_GAP,
-      top: w.y - wordHeight / 2 - WORD_GAP,
-      bottom: w.y + wordHeight / 2 + WORD_GAP,
-    };
-
-    if (box.left < 4 || box.right > width - 4 || box.top < 4 || box.bottom > height - 4) return null;
-    if (rectsOverlap(box, qrBox)) return null;
-    if (!boxFitsShape(box, tr, 1)) return null;
-
-    boxes.push(box);
-    sizes.push(fontSize);
-  }
-
-  for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-      if (rectsOverlap(boxes[i], boxes[j])) return null;
-    }
-  }
-
-  return { boxes, sizes };
-}
-
-function canPlaceWordAtXY(
-  words: PlacedWord[],
-  index: number,
-  x: number,
-  y: number,
-  fontSize: number,
-  width: number,
-  height: number,
-  tr: MapTransform,
-  qrBox: { left: number; top: number; right: number; bottom: number }
-): { left: number; top: number; right: number; bottom: number } | null {
-  const w = words[index];
-  const wordWidth = measureWordWidth(w.word, fontSize);
-  const wordHeight = Math.ceil(fontSize * 1.14);
-  const box = {
-    left: x - wordWidth / 2 - WORD_GAP,
-    right: x + wordWidth / 2 + WORD_GAP,
-    top: y - wordHeight / 2 - WORD_GAP,
-    bottom: y + wordHeight / 2 + WORD_GAP,
+function intersectsQRArea(
+  box: { left: number; top: number; right: number; bottom: number },
+  qr: QRAvoidArea
+): boolean {
+  if (boxIntersectsCircle(box, qr.cx, qr.cy, qr.r)) return true;
+  const hardStripe = {
+    left: qr.left + (qr.right - qr.left) * 0.66,
+    right: qr.right,
+    top: qr.top,
+    bottom: qr.top + (qr.bottom - qr.top) * 0.45,
   };
-  if (box.left < 3 || box.right > width - 3 || box.top < 3 || box.bottom > height - 3) return null;
-  if (rectsOverlap(box, qrBox)) return null;
-  if (!boxFitsShape(box, tr, 1)) return null;
-  for (let j = 0; j < words.length; j++) {
-    if (j === index) continue;
-    if (rectsOverlap(box, words[j].box)) return null;
-  }
-  return box;
+  return rectsOverlap(box, hardStripe);
+}
+
+function pointInsideQRArea(x: number, y: number, qr: QRAvoidArea): boolean {
+  const dx = x - qr.cx;
+  const dy = y - qr.cy;
+  if (dx * dx + dy * dy < qr.r * qr.r) return true;
+  const hardStripe = {
+    left: qr.left + (qr.right - qr.left) * 0.66,
+    right: qr.right,
+    top: qr.top,
+    bottom: qr.top + (qr.bottom - qr.top) * 0.45,
+  };
+  return x >= hardStripe.left && x <= hardStripe.right && y >= hardStripe.top && y <= hardStripe.bottom;
 }
 
 function getKoreaOutlinePaths(tr: MapTransform): string[] {
@@ -317,11 +285,9 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
       if (!cancelled) setFontsReady(true);
     };
     run();
-
     const fallback = setTimeout(() => {
       if (!cancelled) setFontsReady(true);
     }, 700);
-
     return () => {
       cancelled = true;
       clearTimeout(fallback);
@@ -331,144 +297,157 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
       setSize({ width: Math.floor(width), height: Math.floor(height) });
     });
-
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
   const placed = useMemo(() => {
     try {
-    const entries = Object.entries(words);
-    if (!entries.length || !fontsReady || size.width === 0 || size.height === 0) return [] as PlacedWord[];
+      const entries = Object.entries(words);
+      if (!entries.length || !fontsReady || size.width === 0 || size.height === 0) return [] as PlacedWord[];
 
-    const sorted = [...entries].sort((a, b) => b[1] - a[1]).slice(0, 90);
-    const maxCount = Math.max(...sorted.map(([, c]) => c));
-    const minCount = Math.min(...sorted.map(([, c]) => c));
-    const range = Math.max(1, maxCount - minCount);
-    const width = size.width;
-    const height = size.height;
-    const moscowCount = sorted.find(([w]) => w.trim().toLowerCase() === "москва")?.[1] ?? minCount;
-    const moscowRatio = (moscowCount - minCount) / range;
-    const moscowBaseSizeRaw = Math.round((12 + moscowRatio * 34) * GLOBAL_FONT_SCALE);
-    // Keep Moscow as baseline, but allow smaller words so the silhouette can hold more entries.
-    const moscowBaseSize = Math.max(10, Math.min(moscowBaseSizeRaw, Math.round(Math.min(width, height) * 0.028)));
-    const minWordSize = Math.max(8, Math.round(moscowBaseSize * 0.6));
-    const tr = buildMapTransform(width, height);
+      const dynamicWordLimit = Math.max(110, Math.min(190, Math.round((size.width * size.height) / 15500)));
+      const sorted = [...entries].sort((a, b) => b[1] - a[1]).slice(0, dynamicWordLimit);
+      const maxCount = Math.max(...sorted.map(([, c]) => c));
+      const minCount = Math.min(...sorted.map(([, c]) => c));
+      const range = Math.max(1, maxCount - minCount);
 
-    const qrBox = {
-      left: width - QR_MARGIN - qrSize - QR_BREATHING,
-      top: QR_MARGIN - QR_BREATHING,
-      right: width - QR_MARGIN + QR_BREATHING,
-      bottom: QR_MARGIN + qrSize + QR_BREATHING,
-    };
+      const width = size.width;
+      const height = size.height;
+      const moscowCount = sorted.find(([w]) => w.trim().toLowerCase() === "москва")?.[1] ?? minCount;
+      const moscowRatio = (moscowCount - minCount) / range;
+      const moscowBaseSizeRaw = Math.round((11 + moscowRatio * 30) * GLOBAL_FONT_SCALE);
+      const moscowBaseSize = Math.max(9, Math.min(moscowBaseSizeRaw, Math.round(Math.min(width, height) * 0.023)));
+      const minWordSize = Math.max(5, Math.round(moscowBaseSize * 0.24));
 
-    const candidates: [number, number][] = [];
-    const random = seeded(0x5f3759df + sorted.length * 31 + width * 7 + height);
+      const tr = buildMapTransform(width, height);
+      const mapW = (tr.maxX - tr.minX) * tr.scale;
+      const mapH = (tr.maxY - tr.minY) * tr.scale;
+      const cx = tr.originX + mapW / 2;
+      const cy = tr.originY + mapH / 2;
 
-    for (let tries = 0; tries < CANDIDATE_MAX_TRIES && candidates.length < CANDIDATE_TARGET; tries++) {
-      const nx = SHAPE_BOUNDS.minX + random() * (SHAPE_BOUNDS.maxX - SHAPE_BOUNDS.minX);
-      const ny = SHAPE_BOUNDS.minY + random() * (SHAPE_BOUNDS.maxY - SHAPE_BOUNDS.minY);
-      if (!isInKoreaShape(nx, ny)) continue;
+      const qrBox = {
+        left: width - QR_MARGIN - qrSize - QR_BREATHING,
+        top: QR_MARGIN - QR_BREATHING,
+        right: width - QR_MARGIN + QR_BREATHING,
+        bottom: QR_MARGIN + qrSize + QR_BREATHING,
+      };
+      const qrArea: QRAvoidArea = {
+        ...qrBox,
+        cx: (qrBox.left + qrBox.right) / 2,
+        cy: (qrBox.top + qrBox.bottom) / 2,
+        r: (qrSize * 0.5) + 6,
+      };
 
-      const [x, y] = shapeToScreen(nx, ny, tr);
-
-      if (x > qrBox.left && x < qrBox.right && y > qrBox.top && y < qrBox.bottom) continue;
-      if (x < 6 || x > width - 6 || y < 6 || y > height - 6) continue;
-
-      candidates.push([x, y]);
-    }
-    if (candidates.length < 140) return [];
-
-    const cx = width / 2;
-    const cy = height / 2;
-    const centerOrdered = [...candidates.keys()].sort((a, b) => {
-      const da = (candidates[a][0] - cx) ** 2 + (candidates[a][1] - cy) ** 2;
-      const db = (candidates[b][0] - cx) ** 2 + (candidates[b][1] - cy) ** 2;
-      return da - db;
-    });
-    const edgeOrdered = [...centerOrdered].reverse();
-
-    const result: PlacedWord[] = [];
-    let cursor = 0;
-
-    for (const [word, count] of sorted) {
-      const ratio = (count - minCount) / range;
-      const baseSize = Math.max(
-        minWordSize,
-        Math.round((10 + ratio * 24) * GLOBAL_FONT_SCALE)
-      );
-      const seed = hashWord(word);
-
-      let placedWord: PlacedWord | null = null;
-
-      for (const scale of [1, 0.9, 0.8, 0.7]) {
-        const fontSize = Math.max(minWordSize, Math.round(baseSize * scale));
-        const wordWidth = measureWordWidth(word, fontSize);
-        const wordHeight = Math.ceil(fontSize * 1.14);
-
-        const order = ratio > 0.62 ? centerOrdered : edgeOrdered;
-        const offset = seed % order.length;
-        const attempts = Math.min(ratio > 0.62 ? 520 : 760, order.length);
-
-        for (let i = 0; i < attempts; i++) {
-          const ordIdx = (cursor + offset + i * 13) % order.length;
-          const idx = order[ordIdx];
-          const [x, y] = candidates[idx];
-          const box = {
-            left: x - wordWidth / 2 - WORD_GAP,
-            right: x + wordWidth / 2 + WORD_GAP,
-            top: y - wordHeight / 2 - WORD_GAP,
-            bottom: y + wordHeight / 2 + WORD_GAP,
-          };
-
-          if (box.left < 3 || box.right > width - 3 || box.top < 3 || box.bottom > height - 3) continue;
-          if (rectsOverlap(box, qrBox)) continue;
-          if (!boxFitsShape(box, tr, 1)) continue;
-          if (result.some((r) => rectsOverlap(box, r.box))) continue;
-
-          const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
-
-          placedWord = {
-            word,
-            count,
-            ratio,
-            x,
-            y,
-            fontSize,
-            color,
-            delay: (seed % 1200) / 100,
-            duration: 4.8 + (seed % 280) / 100,
-            swayX: 2 + (seed % 7),
-            swayY: 4 + (seed % 8),
-            rotate: ((seed % 7) - 3) * 0.25,
-            box,
-          };
-          cursor = (ordIdx + 1) % order.length;
-
-          break;
+      const candidates: [number, number][] = [];
+      const step = Math.max(8, Math.min(14, Math.round(Math.min(width, height) / 58)));
+      const addGrid = (ox: number, oy: number) => {
+        for (let y = tr.originY + 4 + oy; y <= tr.originY + mapH - 4; y += step) {
+          for (let x = tr.originX + 4 + ox; x <= tr.originX + mapW - 4; x += step) {
+            if (pointInsideQRArea(x, y, qrArea)) continue;
+            const [nx, ny] = screenToShape(x, y, tr);
+            if (!isInKoreaShape(nx, ny)) continue;
+            candidates.push([x, y]);
+          }
         }
+      };
+      addGrid(0, 0);
+      addGrid(step / 2, step / 2);
+      if (candidates.length < 120) return [];
 
-        if (placedWord) break;
-      }
+      const gridCols = 20;
+      const gridRows = 30;
+      const occGrid = new Uint16Array(gridCols * gridRows);
+      const cellIndex = (x: number, y: number) => {
+        const nx = Math.max(0, Math.min(0.999, (x - tr.originX) / Math.max(1, mapW)));
+        const ny = Math.max(0, Math.min(0.999, (y - tr.originY) / Math.max(1, mapH)));
+        const gx = Math.min(gridCols - 1, Math.floor(nx * gridCols));
+        const gy = Math.min(gridRows - 1, Math.floor(ny * gridRows));
+        return gy * gridCols + gx;
+      };
+      const neighborOcc = (idx: number) => {
+        const gx = idx % gridCols;
+        const gy = Math.floor(idx / gridCols);
+        let sum = 0;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            const x = gx + ox;
+            const y = gy + oy;
+            if (x < 0 || x >= gridCols || y < 0 || y >= gridRows) continue;
+            const w = ox === 0 && oy === 0 ? 1 : 0.55;
+            sum += occGrid[y * gridCols + x] * w;
+          }
+        }
+        return sum;
+      };
+      const isCore = (x: number, y: number) => {
+        const dx = (x - cx) / Math.max(1, mapW);
+        const dy = (y - cy) / Math.max(1, mapH);
+        return (dx * dx) / (0.33 * 0.33) + (dy * dy) / (0.28 * 0.28) <= 1;
+      };
 
-      // Fallback pass: keep no-overlap/QR rules, but allow looser match to Korea contour.
-      if (!placedWord) {
-        for (const scale of [0.72, 0.62, 0.54]) {
+      const result: PlacedWord[] = [];
+      let corePlaced = 0;
+      const targetCoreRatio = 0.34;
+
+      const bucketSize = Math.max(14, Math.round(minWordSize * 1.8));
+      const buckets = new Map<string, number[]>();
+      const bucketKey = (bx: number, by: number) => `${bx},${by}`;
+      const bucketRange = (box: { left: number; top: number; right: number; bottom: number }) => ({
+        bx0: Math.floor(box.left / bucketSize),
+        bx1: Math.floor(box.right / bucketSize),
+        by0: Math.floor(box.top / bucketSize),
+        by1: Math.floor(box.bottom / bucketSize),
+      });
+      const overlapsPlaced = (box: { left: number; top: number; right: number; bottom: number }) => {
+        const { bx0, bx1, by0, by1 } = bucketRange(box);
+        for (let by = by0; by <= by1; by++) {
+          for (let bx = bx0; bx <= bx1; bx++) {
+            const ids = buckets.get(bucketKey(bx, by));
+            if (!ids) continue;
+            for (const id of ids) {
+              if (rectsOverlap(box, result[id].box)) return true;
+            }
+          }
+        }
+        return false;
+      };
+      const addToBuckets = (idx: number) => {
+        const { bx0, bx1, by0, by1 } = bucketRange(result[idx].box);
+        for (let by = by0; by <= by1; by++) {
+          for (let bx = bx0; bx <= bx1; bx++) {
+            const key = bucketKey(bx, by);
+            const arr = buckets.get(key);
+            if (arr) arr.push(idx);
+            else buckets.set(key, [idx]);
+          }
+        }
+      };
+
+      for (let wi = 0; wi < sorted.length; wi++) {
+        const [word, count] = sorted[wi];
+        const ratio = (count - minCount) / range;
+        const baseSize = Math.max(minWordSize, Math.round((9 + ratio * 21) * GLOBAL_FONT_SCALE));
+        const seed = hashWord(word);
+        const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
+        const coreDeficit = targetCoreRatio * (result.length + 1) - corePlaced;
+        let placedWord: PlacedWord | null = null;
+
+        for (const scale of [1, 0.9, 0.82, 0.74, 0.66]) {
           const fontSize = Math.max(minWordSize, Math.round(baseSize * scale));
           const wordWidth = measureWordWidth(word, fontSize);
           const wordHeight = Math.ceil(fontSize * 1.14);
-          const order = edgeOrdered;
-          const offset = (seed * 3) % order.length;
-          const attempts = Math.min(820, order.length);
+          const sampleCount = Math.min(280, candidates.length);
+          const start = seed % candidates.length;
+          const walk = coprimeStep(candidates.length, seed ^ (wi * 2654435761));
+          let best: { x: number; y: number; box: { left: number; top: number; right: number; bottom: number }; score: number } | null = null;
 
-          for (let i = 0; i < attempts; i++) {
-            const ordIdx = (cursor + offset + i * 19) % order.length;
-            const idx = order[ordIdx];
+          for (let i = 0; i < sampleCount; i++) {
+            const idx = modPos(start + i * walk, candidates.length);
             const [x, y] = candidates[idx];
             const box = {
               left: x - wordWidth / 2 - WORD_GAP,
@@ -478,17 +457,23 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
             };
 
             if (box.left < 3 || box.right > width - 3 || box.top < 3 || box.bottom > height - 3) continue;
-            if (rectsOverlap(box, qrBox)) continue;
+            if (intersectsQRArea(box, qrArea)) continue;
             if (!boxFitsShape(box, tr, 1)) continue;
-            if (result.some((r) => rectsOverlap(box, r.box))) continue;
+            if (overlapsPlaced(box)) continue;
 
-            const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
+            const occ = neighborOcc(cellIndex(x, y));
+            const coreWeight = coreDeficit > 0 ? (isCore(x, y) ? -0.95 : 0.85) : 0;
+            const score = occ + coreWeight;
+            if (!best || score < best.score) best = { x, y, box, score };
+          }
+
+          if (best) {
             placedWord = {
               word,
               count,
               ratio,
-              x,
-              y,
+              x: best.x,
+              y: best.y,
               fontSize,
               color,
               delay: (seed % 1200) / 100,
@@ -496,130 +481,22 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
               swayX: 2 + (seed % 7),
               swayY: 4 + (seed % 8),
               rotate: ((seed % 7) - 3) * 0.25,
-              box,
+              box: best.box,
             };
-            cursor = (ordIdx + 1) % order.length;
             break;
           }
+        }
 
-          if (placedWord) break;
+        if (placedWord) {
+          const idx = result.length;
+          result.push(placedWord);
+          addToBuckets(idx);
+          occGrid[cellIndex(placedWord.x, placedWord.y)] = Math.min(65535, occGrid[cellIndex(placedWord.x, placedWord.y)] + 1);
+          if (isCore(placedWord.x, placedWord.y)) corePlaced++;
         }
       }
 
-      // Final fallback: keep no-overlap and QR avoidance, relax shape-fit check.
-      if (!placedWord) {
-        const fontSize = minWordSize;
-        const wordWidth = measureWordWidth(word, fontSize);
-        const wordHeight = Math.ceil(fontSize * 1.14);
-        const order = edgeOrdered;
-        const offset = (seed * 5) % order.length;
-        const attempts = Math.min(900, order.length);
-
-        for (let i = 0; i < attempts; i++) {
-          const ordIdx = (cursor + offset + i * 17) % order.length;
-          const idx = order[ordIdx];
-          const [x, y] = candidates[idx];
-          const box = {
-            left: x - wordWidth / 2 - WORD_GAP,
-            right: x + wordWidth / 2 + WORD_GAP,
-            top: y - wordHeight / 2 - WORD_GAP,
-            bottom: y + wordHeight / 2 + WORD_GAP,
-          };
-
-          if (box.left < 3 || box.right > width - 3 || box.top < 3 || box.bottom > height - 3) continue;
-          if (rectsOverlap(box, qrBox)) continue;
-          if (result.some((r) => rectsOverlap(box, r.box))) continue;
-
-          const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
-          placedWord = {
-            word,
-            count,
-            ratio,
-            x,
-            y,
-            fontSize,
-            color,
-            delay: (seed % 1200) / 100,
-            duration: 4.8 + (seed % 280) / 100,
-            swayX: 2 + (seed % 7),
-            swayY: 4 + (seed % 8),
-            rotate: ((seed % 7) - 3) * 0.25,
-            box,
-          };
-          cursor = (ordIdx + 1) % order.length;
-          break;
-        }
-      }
-
-      if (placedWord) result.push(placedWord);
-    }
-
-    if (result.length > 0) {
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      for (const w of result) {
-        minX = Math.min(minX, w.box.left);
-        maxX = Math.max(maxX, w.box.right);
-        minY = Math.min(minY, w.box.top);
-        maxY = Math.max(maxY, w.box.bottom);
-      }
-
-      const currentCx = (minX + maxX) / 2;
-      const currentCy = (minY + maxY) / 2;
-      const targetCx = width * 0.5;
-      const targetCy = height * 0.52;
-      const desiredDx = targetCx - currentCx;
-      const desiredDy = targetCy - currentCy;
-
-      let factor = 1;
-      while (factor > 0.1) {
-        const dx = desiredDx * factor;
-        const dy = desiredDy * factor;
-        if (canShiftAll(result, dx, dy, width, height, qrBox)) {
-          for (const w of result) {
-            w.x += dx;
-            w.y += dy;
-            w.box = {
-              left: w.box.left + dx,
-              right: w.box.right + dx,
-              top: w.box.top + dy,
-              bottom: w.box.bottom + dy,
-            };
-          }
-          break;
-        }
-        factor *= 0.8;
-      }
-    }
-
-    // Auto-scale words to fill as much silhouette area as possible while keeping no-overlap.
-    if (result.length > 0) {
-      let lo = 1;
-      let hi = 2.2;
-      let best = canApplyScale(result, 1, width, height, tr, qrBox);
-
-      for (let i = 0; i < 8; i++) {
-        const mid = (lo + hi) / 2;
-        const attempt = canApplyScale(result, mid, width, height, tr, qrBox);
-        if (attempt) {
-          lo = mid;
-          best = attempt;
-        } else {
-          hi = mid;
-        }
-      }
-
-      if (best && lo > 1.01) {
-        for (let i = 0; i < result.length; i++) {
-          result[i].fontSize = best.sizes[i];
-          result[i].box = best.boxes[i];
-        }
-      }
-    }
-
-    return result;
+      return result;
     } catch (err) {
       console.error("Word cloud layout failed:", err);
       return [];
@@ -630,7 +507,6 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
     if (size.width === 0 || size.height === 0) return [];
     return getKoreaOutlinePaths(buildMapTransform(size.width, size.height));
   }, [size.height, size.width]);
-
 
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden select-none">
