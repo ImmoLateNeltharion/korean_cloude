@@ -25,8 +25,8 @@ const Index = () => {
       const W = el.clientWidth;
       const H = el.clientHeight;
       const towerW = Math.min(W * 0.85, H * 0.68);
-      const available = Math.floor((W - towerW) / 2) - 12;
-      setQrSize(Math.max(120, available));
+      const available = Math.floor((W - towerW) / 2) + 30;
+      setQrSize(Math.max(150, available));
     };
     compute();
     const obs = new ResizeObserver(compute);
