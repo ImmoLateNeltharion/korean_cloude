@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { KOREA_SHAPES } from "@/lib/korea-shape";
 
 interface WordTowerProps {
   words: Record<string, number>;
   qrSize?: number;
+  centerLogoSize?: number;
 }
 
 type PlacedWord = {
@@ -20,6 +20,7 @@ type PlacedWord = {
   swayY: number;
   rotate: number;
   box: { left: number; top: number; right: number; bottom: number };
+  distNorm: number; // 0 = on outline, 1 = far away
 };
 
 type QRAvoidArea = {
@@ -56,10 +57,19 @@ const BRAND_PALETTE: [number, number, number][] = [
 const QR_MARGIN = 6;
 const QR_BREATHING = 4;
 const WORD_GAP = 1;
-const GLOBAL_FONT_SCALE = 1.38;
-const SILHOUETTE_SCALE = 0.92;
+const GLOBAL_FONT_SCALE = 1.18;
+const SILHOUETTE_SCALE = 0.70;
 const MAP_PAD_X = 6;
 const MAP_PAD_Y = 6;
+
+function sizeTierForCount(rawCount: number): number {
+  const count = Math.max(1, Math.floor(rawCount || 1));
+  if (count <= 1) return 1.0;   // 1: minimal
+  if (count <= 3) return 1.3;   // 2-3: slightly bigger
+  if (count <= 6) return 1.65;  // 4-6: medium
+  if (count <= 8) return 2.1;   // 7-8: above medium
+  return 2.6;                   // 9+: max, hard cap
+}
 
 let measureCanvas: HTMLCanvasElement | null = null;
 function getMeasureCtx(): CanvasRenderingContext2D | null {
@@ -113,28 +123,50 @@ function pointInPolygon(x: number, y: number, polygon: [number, number][]): bool
   return inside;
 }
 
-function polygonCentroid(poly: [number, number][]): [number, number] {
-  let x = 0;
-  let y = 0;
-  for (const [px, py] of poly) {
-    x += px;
-    y += py;
+function createHeartShape(pointsCount = 360): [number, number][] {
+  const points: [number, number][] = [];
+  for (let i = 0; i < pointsCount; i++) {
+    const t = (i / pointsCount) * Math.PI * 2;
+    const x = 16 * Math.pow(Math.sin(t), 3);
+    const y =
+      13 * Math.cos(t) -
+      5 * Math.cos(2 * t) -
+      2 * Math.cos(3 * t) -
+      Math.cos(4 * t);
+    points.push([x, y]);
   }
-  return [x / poly.length, y / poly.length];
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of points) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+
+  const w = maxX - minX || 1;
+  const h = maxY - minY || 1;
+  return points.map(([x, y]) => [
+    ((x - minX) / w) * 2 - 1,
+    ((y - minY) / h) * 2 - 1,
+  ]);
 }
 
-const ACTIVE_KOREA_SHAPES = KOREA_SHAPES.filter((poly) => {
-  const [cx, cy] = polygonCentroid(poly);
-  if (cx < -0.65 && cy < -0.75) return false;
-  return true;
-});
+function isInPolygons(nx: number, ny: number, polygons: [number, number][][]): boolean {
+  return polygons.some((poly) => pointInPolygon(nx, ny, poly));
+}
+
+const INNER_SHAPES: [number, number][][] = [createHeartShape(360)];
 
 const SHAPE_BOUNDS = (() => {
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-  for (const poly of ACTIVE_KOREA_SHAPES) {
+  for (const poly of INNER_SHAPES) {
     for (const [x, y] of poly) {
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
@@ -154,7 +186,7 @@ function buildMapTransform(width: number, height: number): MapTransform {
   const drawW = shapeW * scale;
   const drawH = shapeH * scale;
   const originX = (width - drawW) / 2;
-  const originY = (height - drawH) / 2;
+  const originY = (height - drawH) / 2 - height * 0.14;
   return {
     minX: SHAPE_BOUNDS.minX,
     maxX: SHAPE_BOUNDS.maxX,
@@ -178,10 +210,6 @@ function screenToShape(x: number, y: number, tr: MapTransform): [number, number]
   return [nx, ny];
 }
 
-function isInKoreaShape(nx: number, ny: number): boolean {
-  return ACTIVE_KOREA_SHAPES.some((poly) => pointInPolygon(nx, ny, poly));
-}
-
 function rectsOverlap(
   a: { left: number; top: number; right: number; bottom: number },
   b: { left: number; top: number; right: number; bottom: number }
@@ -194,31 +222,6 @@ function measureWordWidth(word: string, fontSize: number): number {
   if (!ctx) return Math.max(word.length * fontSize * 0.58, fontSize * 1.8);
   ctx.font = `400 ${fontSize}px Vatech, sans-serif`;
   return Math.ceil(ctx.measureText(word).width * 1.06) + 2;
-}
-
-function boxFitsShape(
-  box: { left: number; top: number; right: number; bottom: number },
-  tr: MapTransform,
-  minInside = 6
-): boolean {
-  const points: [number, number][] = [
-    [box.left, box.top],
-    [box.right, box.top],
-    [box.left, box.bottom],
-    [box.right, box.bottom],
-    [(box.left + box.right) / 2, box.top],
-    [(box.left + box.right) / 2, box.bottom],
-    [box.left, (box.top + box.bottom) / 2],
-    [box.right, (box.top + box.bottom) / 2],
-    [(box.left + box.right) / 2, (box.top + box.bottom) / 2],
-  ];
-
-  let inside = 0;
-  for (const [px, py] of points) {
-    const [nx, ny] = screenToShape(px, py, tr);
-    if (isInKoreaShape(nx, ny)) inside++;
-  }
-  return inside >= minInside;
 }
 
 function boxIntersectsCircle(
@@ -261,9 +264,58 @@ function pointInsideQRArea(x: number, y: number, qr: QRAvoidArea): boolean {
   return x >= hardStripe.left && x <= hardStripe.right && y >= hardStripe.top && y <= hardStripe.bottom;
 }
 
-function getKoreaOutlinePaths(tr: MapTransform): string[] {
+function pointInsideHeartHole(x: number, y: number, tr: MapTransform): boolean {
+  const [nx, ny] = screenToShape(x, y, tr);
+  return isInPolygons(nx, ny, INNER_SHAPES);
+}
+
+function boxIntersectsHeartHole(
+  box: { left: number; top: number; right: number; bottom: number },
+  tr: MapTransform
+): boolean {
+  const points: [number, number][] = [];
+  const cols = 5;
+  const rows = 3;
+  for (let ry = 0; ry < rows; ry++) {
+    for (let rx = 0; rx < cols; rx++) {
+      const fx = rx / (cols - 1);
+      const fy = ry / (rows - 1);
+      points.push([
+        box.left + (box.right - box.left) * fx,
+        box.top + (box.bottom - box.top) * fy,
+      ]);
+    }
+  }
+  return points.some(([x, y]) => pointInsideHeartHole(x, y, tr));
+}
+
+// Precompute sampled outline points for distance queries
+const OUTLINE_SAMPLES: [number, number][] = (() => {
+  const pts: [number, number][] = [];
+  for (const poly of INNER_SHAPES) {
+    // Sample every 3rd point for performance
+    for (let i = 0; i < poly.length; i += 3) {
+      pts.push(poly[i]);
+    }
+  }
+  return pts;
+})();
+
+function distToShapeOutline(sx: number, sy: number, tr: MapTransform): number {
+  const [nx, ny] = screenToShape(sx, sy, tr);
+  let minDist = Infinity;
+  for (const [ox, oy] of OUTLINE_SAMPLES) {
+    const dx = nx - ox;
+    const dy = ny - oy;
+    const d = dx * dx + dy * dy;
+    if (d < minDist) minDist = d;
+  }
+  return Math.sqrt(minDist);
+}
+
+function getShapeOutlinePaths(tr: MapTransform): string[] {
   if (tr.scale <= 0) return [];
-  return ACTIVE_KOREA_SHAPES.filter((poly) => poly.length >= 3).map((poly) => {
+  return INNER_SHAPES.filter((poly) => poly.length >= 3).map((poly) => {
     const pts = poly.map(([nx, ny]) => {
       const [x, y] = shapeToScreen(nx, ny, tr);
       return `${x},${y}`;
@@ -272,7 +324,7 @@ function getKoreaOutlinePaths(tr: MapTransform): string[] {
   });
 }
 
-const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
+const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [fontsReady, setFontsReady] = useState(false);
@@ -312,17 +364,12 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
 
       const dynamicWordLimit = Math.max(110, Math.min(190, Math.round((size.width * size.height) / 15500)));
       const sorted = [...entries].sort((a, b) => b[1] - a[1]).slice(0, dynamicWordLimit);
-      const maxCount = Math.max(...sorted.map(([, c]) => c));
-      const minCount = Math.min(...sorted.map(([, c]) => c));
-      const range = Math.max(1, maxCount - minCount);
-
       const width = size.width;
       const height = size.height;
-      const moscowCount = sorted.find(([w]) => w.trim().toLowerCase() === "москва")?.[1] ?? minCount;
-      const moscowRatio = (moscowCount - minCount) / range;
-      const moscowBaseSizeRaw = Math.round((11 + moscowRatio * 30) * GLOBAL_FONT_SCALE);
-      const moscowBaseSize = Math.max(9, Math.min(moscowBaseSizeRaw, Math.round(Math.min(width, height) * 0.023)));
-      const minWordSize = Math.max(5, Math.round(moscowBaseSize * 0.24));
+      const minWordSize = Math.max(
+        12,
+        Math.min(Math.round(Math.min(width, height) * 0.021), 22)
+      );
 
       const tr = buildMapTransform(width, height);
       const mapW = (tr.maxX - tr.minX) * tr.scale;
@@ -330,6 +377,8 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
       const cx = tr.originX + mapW / 2;
       const cy = tr.originY + mapH / 2;
 
+      const hasQrArea = qrSize > 0;
+      const hasCenterArea = centerLogoSize > 0;
       const qrBox = {
         left: width - QR_MARGIN - qrSize - QR_BREATHING,
         top: QR_MARGIN - QR_BREATHING,
@@ -342,15 +391,24 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
         cy: (qrBox.top + qrBox.bottom) / 2,
         r: (qrSize * 0.5) + 6,
       };
+      const centerArea: QRAvoidArea = {
+        left: cx - centerLogoSize * 0.62,
+        right: cx + centerLogoSize * 0.62,
+        top: cy - centerLogoSize * 0.42,
+        bottom: cy + centerLogoSize * 0.42,
+        cx,
+        cy,
+        r: centerLogoSize * 0.48,
+      };
 
       const candidates: [number, number][] = [];
-      const step = Math.max(8, Math.min(14, Math.round(Math.min(width, height) / 58)));
+      const step = Math.max(7, Math.min(12, Math.round(Math.min(width, height) / 64)));
       const addGrid = (ox: number, oy: number) => {
-        for (let y = tr.originY + 4 + oy; y <= tr.originY + mapH - 4; y += step) {
-          for (let x = tr.originX + 4 + ox; x <= tr.originX + mapW - 4; x += step) {
-            if (pointInsideQRArea(x, y, qrArea)) continue;
-            const [nx, ny] = screenToShape(x, y, tr);
-            if (!isInKoreaShape(nx, ny)) continue;
+        for (let y = 6 + oy; y <= height - 6; y += step) {
+          for (let x = 6 + ox; x <= width - 6; x += step) {
+            if (hasQrArea && pointInsideQRArea(x, y, qrArea)) continue;
+            if (hasCenterArea && pointInsideQRArea(x, y, centerArea)) continue;
+            if (pointInsideHeartHole(x, y, tr)) continue;
             candidates.push([x, y]);
           }
         }
@@ -359,12 +417,12 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
       addGrid(step / 2, step / 2);
       if (candidates.length < 120) return [];
 
-      const gridCols = 20;
-      const gridRows = 30;
+      const gridCols = 28;
+      const gridRows = 18;
       const occGrid = new Uint16Array(gridCols * gridRows);
       const cellIndex = (x: number, y: number) => {
-        const nx = Math.max(0, Math.min(0.999, (x - tr.originX) / Math.max(1, mapW)));
-        const ny = Math.max(0, Math.min(0.999, (y - tr.originY) / Math.max(1, mapH)));
+        const nx = Math.max(0, Math.min(0.999, x / Math.max(1, width)));
+        const ny = Math.max(0, Math.min(0.999, y / Math.max(1, height)));
         const gx = Math.min(gridCols - 1, Math.floor(nx * gridCols));
         const gy = Math.min(gridRows - 1, Math.floor(ny * gridRows));
         return gy * gridCols + gx;
@@ -384,15 +442,7 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
         }
         return sum;
       };
-      const isCore = (x: number, y: number) => {
-        const dx = (x - cx) / Math.max(1, mapW);
-        const dy = (y - cy) / Math.max(1, mapH);
-        return (dx * dx) / (0.33 * 0.33) + (dy * dy) / (0.28 * 0.28) <= 1;
-      };
-
       const result: PlacedWord[] = [];
-      let corePlaced = 0;
-      const targetCoreRatio = 0.34;
 
       const bucketSize = Math.max(14, Math.round(minWordSize * 1.8));
       const buckets = new Map<string, number[]>();
@@ -430,11 +480,12 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
 
       for (let wi = 0; wi < sorted.length; wi++) {
         const [word, count] = sorted[wi];
-        const ratio = (count - minCount) / range;
-        const baseSize = Math.max(minWordSize, Math.round((9 + ratio * 21) * GLOBAL_FONT_SCALE));
+        const cappedForRatio = Math.min(10, Math.max(1, count));
+        const ratio = (cappedForRatio - 1) / 9;
+        const tier = sizeTierForCount(cappedForRatio);
+        const baseSize = Math.round(minWordSize * tier * GLOBAL_FONT_SCALE);
         const seed = hashWord(word);
         const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
-        const coreDeficit = targetCoreRatio * (result.length + 1) - corePlaced;
         let placedWord: PlacedWord | null = null;
 
         for (const scale of [1, 0.9, 0.82, 0.74, 0.66]) {
@@ -444,7 +495,7 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
           const sampleCount = Math.min(280, candidates.length);
           const start = seed % candidates.length;
           const walk = coprimeStep(candidates.length, seed ^ (wi * 2654435761));
-          let best: { x: number; y: number; box: { left: number; top: number; right: number; bottom: number }; score: number } | null = null;
+          let best: { x: number; y: number; box: { left: number; top: number; right: number; bottom: number }; score: number; dist: number } | null = null;
 
           for (let i = 0; i < sampleCount; i++) {
             const idx = modPos(start + i * walk, candidates.length);
@@ -457,14 +508,17 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
             };
 
             if (box.left < 3 || box.right > width - 3 || box.top < 3 || box.bottom > height - 3) continue;
-            if (intersectsQRArea(box, qrArea)) continue;
-            if (!boxFitsShape(box, tr, 1)) continue;
+            if (hasQrArea && intersectsQRArea(box, qrArea)) continue;
+            if (hasCenterArea && intersectsQRArea(box, centerArea)) continue;
+            if (boxIntersectsHeartHole(box, tr)) continue;
             if (overlapsPlaced(box)) continue;
 
             const occ = neighborOcc(cellIndex(x, y));
-            const coreWeight = coreDeficit > 0 ? (isCore(x, y) ? -0.95 : 0.85) : 0;
-            const score = occ + coreWeight;
-            if (!best || score < best.score) best = { x, y, box, score };
+            // Strongly prefer positions near the heart outline
+            const distToOutline = distToShapeOutline(x, y, tr);
+            const proximityScore = distToOutline * distToOutline * 40;
+            const score = occ * 0.15 + proximityScore;
+            if (!best || score < best.score) best = { x, y, box, score, dist: distToOutline };
           }
 
           if (best) {
@@ -482,6 +536,7 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
               swayY: 4 + (seed % 8),
               rotate: ((seed % 7) - 3) * 0.25,
               box: best.box,
+              distNorm: best.dist,
             };
             break;
           }
@@ -492,7 +547,19 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
           result.push(placedWord);
           addToBuckets(idx);
           occGrid[cellIndex(placedWord.x, placedWord.y)] = Math.min(65535, occGrid[cellIndex(placedWord.x, placedWord.y)] + 1);
-          if (isCore(placedWord.x, placedWord.y)) corePlaced++;
+        }
+      }
+
+      // Normalize distances: 0 = closest to outline, 1 = farthest
+      if (result.length > 0) {
+        let maxDist = 0;
+        for (const w of result) {
+          if (w.distNorm > maxDist) maxDist = w.distNorm;
+        }
+        if (maxDist > 0) {
+          for (const w of result) {
+            w.distNorm = w.distNorm / maxDist;
+          }
         }
       }
 
@@ -501,82 +568,52 @@ const WordTower = ({ words, qrSize = 160 }: WordTowerProps) => {
       console.error("Word cloud layout failed:", err);
       return [];
     }
-  }, [fontsReady, qrSize, size.height, size.width, words]);
+  }, [centerLogoSize, fontsReady, qrSize, size.height, size.width, words]);
 
-  const koreaOutlinePaths = useMemo(() => {
+  const shapeOutlinePaths = useMemo(() => {
     if (size.width === 0 || size.height === 0) return [];
-    return getKoreaOutlinePaths(buildMapTransform(size.width, size.height));
+    return getShapeOutlinePaths(buildMapTransform(size.width, size.height));
   }, [size.height, size.width]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden select-none">
       <div className="absolute inset-0 pointer-events-none word-cloud-bg" />
-      {koreaOutlinePaths.length > 0 && (
-        <svg className="absolute inset-0 pointer-events-none word-cloud-outline" width={size.width} height={size.height}>
-          <defs>
-            <filter id="koreaNeonGlow" x="-35%" y="-35%" width="170%" height="170%">
-              <feGaussianBlur stdDeviation="4.5" result="blur1" />
-              <feGaussianBlur stdDeviation="9" result="blur2" />
-              <feMerge>
-                <feMergeNode in="blur2" />
-                <feMergeNode in="blur1" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          {koreaOutlinePaths.map((d, i) => (
-            <g key={i}>
-              <path
-                d={d}
-                fill="none"
-                stroke="hsl(352 96% 64%)"
-                strokeWidth={i === 0 ? "7.5" : "5.5"}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                filter="url(#koreaNeonGlow)"
-                opacity={i === 0 ? 0.26 : 0.2}
-              />
-              <path
-                d={d}
-                fill="none"
-                stroke="hsl(352 98% 72%)"
-                strokeWidth={i === 0 ? "2.3" : "1.8"}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                filter="url(#koreaNeonGlow)"
-                opacity={i === 0 ? 0.96 : 0.8}
-              />
-            </g>
-          ))}
-        </svg>
-      )}
 
-      {placed.map((item) => (
-        <span
-          key={item.word}
-          className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap word-cloud-item"
-          style={{
-            left: `${item.x}px`,
-            top: `${item.y}px`,
-            fontFamily: "Vatech, sans-serif",
-            fontSize: `${item.fontSize}px`,
-            color: `hsl(${item.color[0]} ${item.color[1]}% ${item.color[2]}%)`,
-            textShadow: `
-              0 0 7px hsl(${item.color[0]} ${item.color[1]}% ${Math.min(97, item.color[2] + 10)}% / 0.88),
-              0 0 18px hsl(${item.color[0]} ${Math.max(50, item.color[1] - 8)}% ${Math.max(34, item.color[2] - 8)}% / 0.58),
-              0 0 34px hsl(352 80% 44% / 0.36)
-            `,
-            animationDuration: `${item.duration}s`,
-            animationDelay: `-${item.delay}s`,
-            ["--sway-x" as string]: `${item.swayX}px`,
-            ["--sway-y" as string]: `${item.swayY}px`,
-            ["--tilt" as string]: `${item.rotate}deg`,
-          }}
-          title={`${item.word}: ${item.count}`}
-        >
-          {item.word}
-        </span>
-      ))}
+      {placed.map((item) => {
+        // Close to outline (0) = bright, far (1) = dim
+        const proximity = 1 - item.distNorm;
+        const opacity = 0.25 + proximity * 0.75;
+        const glowIntensity = proximity;
+        const satBoost = Math.round(proximity * 15);
+        const lightBoost = Math.round(proximity * 12);
+
+        return (
+          <span
+            key={item.word}
+            className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap word-cloud-item"
+            style={{
+              left: `${item.x}px`,
+              top: `${item.y}px`,
+              fontFamily: "Vatech, sans-serif",
+              fontSize: `${item.fontSize}px`,
+              color: `hsl(${item.color[0]} ${Math.min(100, item.color[1] + satBoost)}% ${Math.min(97, item.color[2] + lightBoost)}%)`,
+              opacity,
+              textShadow: glowIntensity > 0.3
+                ? `0 0 ${6 + glowIntensity * 12}px hsl(${item.color[0]} ${item.color[1]}% ${Math.min(97, item.color[2] + 10)}% / ${0.4 + glowIntensity * 0.5}),
+                   0 0 ${16 + glowIntensity * 20}px hsl(${item.color[0]} ${Math.max(50, item.color[1])}% ${Math.max(34, item.color[2])}% / ${glowIntensity * 0.45})`
+                : "none",
+              animationDuration: `${item.duration}s`,
+              animationDelay: `-${item.delay}s`,
+              ["--sway-x" as string]: `${item.swayX}px`,
+              ["--sway-y" as string]: `${item.swayY}px`,
+              ["--tilt" as string]: `${item.rotate}deg`,
+            }}
+            title={`${item.word}: ${item.count}`}
+          >
+            {item.word}
+          </span>
+        );
+      })}
     </div>
   );
 };

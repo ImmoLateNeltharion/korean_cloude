@@ -13,24 +13,22 @@ const QR_FALLBACK = 'https://t.me/YourBotUsername';
 const Index = () => {
   document.title = "test";
   const { stopWords } = useStopWords();
-
-  // QR size = space between tower edge and screen edge (tower is centered)
-  // towerWidth = min(W*0.85, H*0.68), available right gap = (W - towerWidth) / 2
   const mainRef = useRef<HTMLDivElement>(null);
+  const [logoSize, setLogoSize] = useState(190);
   const [qrSize, setQrSize] = useState(160);
+
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
     const compute = () => {
-      const W = el.clientWidth;
-      const H = el.clientHeight;
-      const base = Math.round(Math.min(W, H) * 0.34);
-      setQrSize(Math.max(220, Math.min(420, base)));
+      const side = Math.min(el.clientWidth, el.clientHeight);
+      setLogoSize(Math.max(140, Math.min(260, Math.round(side * 0.19))));
+      setQrSize(Math.max(130, Math.min(240, Math.round(side * 0.2))));
     };
     compute();
-    const obs = new ResizeObserver(compute);
-    obs.observe(el);
-    return () => obs.disconnect();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // Dynamic QR URL from localStorage (syncs across tabs via storage event)
@@ -67,6 +65,7 @@ const Index = () => {
     queryKey: ["approved-words"],
     queryFn: () => fetch("/api/words/approved").then((r) => r.json()),
     refetchInterval: 5000,
+    refetchIntervalInBackground: true,
     retry: 1,
     retryDelay: 2000,
   });
@@ -87,17 +86,13 @@ const Index = () => {
       className="h-screen relative flex flex-col overflow-hidden"
       style={{
         height: '100dvh',
-        backgroundImage: 'url(/seoul-night-bg.jpg)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center bottom',
-        backgroundRepeat: 'no-repeat',
-        backgroundColor: '#0a0a0a',
+        backgroundColor: '#060608',
       }}
     >
-      {/* Dark overlay to keep text readable */}
+      {/* Radial glow behind heart */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{ background: 'linear-gradient(to bottom, rgba(5,5,10,0.82) 0%, rgba(5,5,10,0.65) 50%, rgba(5,5,10,0.45) 100%)' }}
+        style={{ background: 'radial-gradient(ellipse 50% 55% at 50% 48%, rgba(180,30,60,0.12) 0%, rgba(120,20,40,0.05) 40%, transparent 70%)' }}
       />
 
       {/* QR code — top right, dynamic */}
@@ -107,7 +102,21 @@ const Index = () => {
 
       {/* Tower fills the remaining screen */}
       <div className="relative z-10 flex-1 min-h-0 w-full">
-        <WordTower words={filteredWords} qrSize={qrSize} />
+        <WordTower words={filteredWords} qrSize={qrSize} centerLogoSize={logoSize} />
+      </div>
+
+      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center" style={{ marginTop: '-14%' }}>
+        <img
+          src="/vatech-logo.png"
+          alt="Vatech"
+          style={{
+            width: `${logoSize * 2}px`,
+            maxWidth: "40vw",
+            height: "auto",
+            filter: "brightness(0) invert(1) drop-shadow(0 0 10px rgba(220,220,230,0.7)) drop-shadow(0 0 28px rgba(200,200,220,0.4))",
+            opacity: 0.95,
+          }}
+        />
       </div>
 
       {/* Download buttons — bottom left overlay */}
