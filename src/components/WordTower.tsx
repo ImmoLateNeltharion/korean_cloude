@@ -56,9 +56,10 @@ const BRAND_PALETTE: [number, number, number][] = [
 
 const QR_MARGIN = 6;
 const QR_BREATHING = 4;
+const QR_SAFE_PAD = 64;
 const WORD_GAP = 1;
 const GLOBAL_FONT_SCALE = 1.18;
-const SILHOUETTE_SCALE = 0.70;
+const SILHOUETTE_SCALE = 0.64;
 const MAP_PAD_X = 6;
 const MAP_PAD_Y = 6;
 
@@ -186,7 +187,7 @@ function buildMapTransform(width: number, height: number): MapTransform {
   const drawW = shapeW * scale;
   const drawH = shapeH * scale;
   const originX = (width - drawW) / 2;
-  const originY = (height - drawH) / 2 - height * 0.14;
+  const originY = (height - drawH) / 2;
   return {
     minX: SHAPE_BOUNDS.minX,
     maxX: SHAPE_BOUNDS.maxX,
@@ -241,6 +242,7 @@ function intersectsQRArea(
   box: { left: number; top: number; right: number; bottom: number },
   qr: QRAvoidArea
 ): boolean {
+  if (rectsOverlap(box, qr)) return true;
   if (boxIntersectsCircle(box, qr.cx, qr.cy, qr.r)) return true;
   const hardStripe = {
     left: qr.left + (qr.right - qr.left) * 0.66,
@@ -252,6 +254,7 @@ function intersectsQRArea(
 }
 
 function pointInsideQRArea(x: number, y: number, qr: QRAvoidArea): boolean {
+  if (x >= qr.left && x <= qr.right && y >= qr.top && y <= qr.bottom) return true;
   const dx = x - qr.cx;
   const dy = y - qr.cy;
   if (dx * dx + dy * dy < qr.r * qr.r) return true;
@@ -380,16 +383,16 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
       const hasQrArea = qrSize > 0;
       const hasCenterArea = centerLogoSize > 0;
       const qrBox = {
-        left: width - QR_MARGIN - qrSize - QR_BREATHING,
-        top: QR_MARGIN - QR_BREATHING,
-        right: width - QR_MARGIN + QR_BREATHING,
-        bottom: QR_MARGIN + qrSize + QR_BREATHING,
+        left: width - QR_MARGIN - qrSize - QR_BREATHING - QR_SAFE_PAD,
+        top: QR_MARGIN - QR_BREATHING - QR_SAFE_PAD,
+        right: width - QR_MARGIN + QR_BREATHING + QR_SAFE_PAD,
+        bottom: QR_MARGIN + qrSize + QR_BREATHING + QR_SAFE_PAD,
       };
       const qrArea: QRAvoidArea = {
         ...qrBox,
         cx: (qrBox.left + qrBox.right) / 2,
         cy: (qrBox.top + qrBox.bottom) / 2,
-        r: (qrSize * 0.5) + 6,
+        r: (qrSize * 0.5) + QR_SAFE_PAD,
       };
       const centerArea: QRAvoidArea = {
         left: cx - centerLogoSize * 0.62,

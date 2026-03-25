@@ -23,7 +23,7 @@ const Index = () => {
     const compute = () => {
       const side = Math.min(el.clientWidth, el.clientHeight);
       setLogoSize(Math.max(140, Math.min(260, Math.round(side * 0.19))));
-      setQrSize(Math.max(130, Math.min(240, Math.round(side * 0.2))));
+      setQrSize(Math.max(200, Math.min(360, Math.round(side * 0.3))));
     };
     compute();
     const ro = new ResizeObserver(compute);
@@ -105,7 +105,7 @@ const Index = () => {
         <WordTower words={filteredWords} qrSize={qrSize} centerLogoSize={logoSize} />
       </div>
 
-      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center" style={{ marginTop: '-14%' }}>
+      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
         <img
           src="/vatech-logo.png"
           alt="Vatech"
