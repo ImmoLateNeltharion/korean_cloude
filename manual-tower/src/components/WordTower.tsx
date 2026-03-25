@@ -331,6 +331,9 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [fontsReady, setFontsReady] = useState(false);
+  const stablePositionsRef = useRef<
+    Record<string, Pick<PlacedWord, "x" | "y" | "delay" | "duration" | "swayX" | "swayY" | "rotate">>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -481,8 +484,80 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
         }
       };
 
+      const buildBox = (x: number, y: number, wordWidth: number, wordHeight: number) => ({
+        left: x - wordWidth / 2 - WORD_GAP,
+        right: x + wordWidth / 2 + WORD_GAP,
+        top: y - wordHeight / 2 - WORD_GAP,
+        bottom: y + wordHeight / 2 + WORD_GAP,
+      });
+
+      const isBoxValid = (box: { left: number; top: number; right: number; bottom: number }) => {
+        if (box.left < 3 || box.right > width - 3 || box.top < 3 || box.bottom > height - 3) return false;
+        if (hasQrArea && intersectsQRArea(box, qrArea)) return false;
+        if (hasCenterArea && intersectsQRArea(box, centerArea)) return false;
+        if (boxIntersectsHeartHole(box, tr)) return false;
+        if (overlapsPlaced(box)) return false;
+        return true;
+      };
+
+      const reused = new Set<string>();
+      const prevStable = stablePositionsRef.current;
+
+      // First pass: keep existing words where possible to avoid full relayout/flicker.
       for (let wi = 0; wi < sorted.length; wi++) {
         const [word, count] = sorted[wi];
+        const prev = prevStable[word];
+        if (!prev) continue;
+
+        const cappedForRatio = Math.min(10, Math.max(1, count));
+        const ratio = (cappedForRatio - 1) / 9;
+        const tier = sizeTierForCount(cappedForRatio);
+        const baseSize = Math.round(minWordSize * tier * GLOBAL_FONT_SCALE);
+        const seed = hashWord(word);
+        const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
+
+        let reusedWord: PlacedWord | null = null;
+        for (const scale of [1, 0.9, 0.82, 0.74, 0.66]) {
+          const fontSize = Math.max(minWordSize, Math.round(baseSize * scale));
+          const wordWidth = measureWordWidth(word, fontSize);
+          const wordHeight = Math.ceil(fontSize * 1.14);
+          const box = buildBox(prev.x, prev.y, wordWidth, wordHeight);
+          if (!isBoxValid(box)) continue;
+
+          reusedWord = {
+            word,
+            count,
+            ratio,
+            x: prev.x,
+            y: prev.y,
+            fontSize,
+            color,
+            delay: prev.delay,
+            duration: prev.duration,
+            swayX: prev.swayX,
+            swayY: prev.swayY,
+            rotate: prev.rotate,
+            box,
+            distNorm: distToShapeOutline(prev.x, prev.y, tr),
+          };
+          break;
+        }
+
+        if (reusedWord) {
+          const idx = result.length;
+          result.push(reusedWord);
+          addToBuckets(idx);
+          occGrid[cellIndex(reusedWord.x, reusedWord.y)] = Math.min(
+            65535,
+            occGrid[cellIndex(reusedWord.x, reusedWord.y)] + 1
+          );
+          reused.add(word);
+        }
+      }
+
+      for (let wi = 0; wi < sorted.length; wi++) {
+        const [word, count] = sorted[wi];
+        if (reused.has(word)) continue;
         const cappedForRatio = Math.min(10, Math.max(1, count));
         const ratio = (cappedForRatio - 1) / 9;
         const tier = sizeTierForCount(cappedForRatio);
@@ -503,18 +578,8 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
           for (let i = 0; i < sampleCount; i++) {
             const idx = modPos(start + i * walk, candidates.length);
             const [x, y] = candidates[idx];
-            const box = {
-              left: x - wordWidth / 2 - WORD_GAP,
-              right: x + wordWidth / 2 + WORD_GAP,
-              top: y - wordHeight / 2 - WORD_GAP,
-              bottom: y + wordHeight / 2 + WORD_GAP,
-            };
-
-            if (box.left < 3 || box.right > width - 3 || box.top < 3 || box.bottom > height - 3) continue;
-            if (hasQrArea && intersectsQRArea(box, qrArea)) continue;
-            if (hasCenterArea && intersectsQRArea(box, centerArea)) continue;
-            if (boxIntersectsHeartHole(box, tr)) continue;
-            if (overlapsPlaced(box)) continue;
+            const box = buildBox(x, y, wordWidth, wordHeight);
+            if (!isBoxValid(box)) continue;
 
             const occ = neighborOcc(cellIndex(x, y));
             // Strongly prefer positions near the heart outline
@@ -553,18 +618,19 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
         }
       }
 
-      // Normalize distances: 0 = closest to outline, 1 = farthest
-      if (result.length > 0) {
-        let maxDist = 0;
-        for (const w of result) {
-          if (w.distNorm > maxDist) maxDist = w.distNorm;
-        }
-        if (maxDist > 0) {
-          for (const w of result) {
-            w.distNorm = w.distNorm / maxDist;
-          }
-        }
+      const nextStable: Record<string, Pick<PlacedWord, "x" | "y" | "delay" | "duration" | "swayX" | "swayY" | "rotate">> = {};
+      for (const w of result) {
+        nextStable[w.word] = {
+          x: w.x,
+          y: w.y,
+          delay: w.delay,
+          duration: w.duration,
+          swayX: w.swayX,
+          swayY: w.swayY,
+          rotate: w.rotate,
+        };
       }
+      stablePositionsRef.current = nextStable;
 
       return result;
     } catch (err) {
@@ -581,11 +647,18 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden select-none">
       <div className="absolute inset-0 pointer-events-none word-cloud-bg" />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse 72% 68% at 50% 50%, rgba(0,0,0,0) 56%, rgba(0,0,0,0.14) 78%, rgba(0,0,0,0.28) 100%)",
+        }}
+      />
 
       {placed.map((item) => {
-        // Close to outline (0) = bright, far (1) = dim
-        const proximity = 1 - item.distNorm;
-        const opacity = 0.25 + proximity * 0.75;
+        // Stable shading by absolute distance to outline (no frame-to-frame re-normalization).
+        const proximity = Math.max(0, Math.min(1, 1 - item.distNorm / 0.75));
+        const opacity = 0.48 + proximity * 0.42;
         const glowIntensity = proximity;
         const satBoost = Math.round(proximity * 15);
         const lightBoost = Math.round(proximity * 12);

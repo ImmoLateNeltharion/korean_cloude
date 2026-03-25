@@ -87,6 +87,13 @@
   font-weight: 400;
   line-height: 1;
   will-change: transform;
+  transition:
+    left 520ms ease,
+    top 520ms ease,
+    font-size 520ms ease,
+    opacity 420ms ease,
+    color 420ms ease,
+    text-shadow 420ms ease;
   animation-name: cloudSway;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
