@@ -2,6 +2,7 @@ import express from "express";
 import { execSync } from "child_process";
 import { getPendingWords, approveWord, rejectWord, getApprovedWordsMap, deleteApprovedWord, addApprovedWordManual } from "./db.js";
 import { authMiddleware, loginHandler, logoutHandler, statusHandler } from "./auth.js";
+import { VATECH_DICTIONARY } from "./vatech-dictionary.js";
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -110,6 +111,40 @@ app.post("/api/words/manual", (req, res) => {
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to add word" });
+  }
+});
+
+function pickRandomUnique<T>(items: T[], count: number): T[] {
+  if (items.length <= count) return [...items];
+  const pool = [...items];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, count);
+}
+
+app.post("/api/words/manual/add-three", (_req, res) => {
+  try {
+    const approvedSet = new Set(
+      Object.keys(getApprovedWordsMap()).map((word) => word.toLowerCase())
+    );
+
+    const unseen = VATECH_DICTIONARY.filter(
+      (word) => !approvedSet.has(word.toLowerCase())
+    );
+    const source = unseen.length >= 3 ? unseen : VATECH_DICTIONARY;
+    const picked = pickRandomUnique(source, 3);
+
+    const added = picked.map((word) => addApprovedWordManual(word, 1));
+    res.json({
+      success: true,
+      dictionarySize: VATECH_DICTIONARY.length,
+      added,
+      remainingUnseen: Math.max(0, unseen.length - picked.length),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to add words" });
   }
 });
 

@@ -4,7 +4,6 @@ import WordTower from "@/components/WordTower";
 import { useStopWords } from "@/contexts/StopWordsContext";
 import { getAllStopWords } from "@/lib/stop-words";
 import { downloadPNG, downloadHTML } from "@/lib/download-snapshot";
-import { DownloadButtons } from "@/components/DownloadButtons";
 import { QRWithLogo } from "@/components/QRWithLogo";
 
 const QR_KEY = 'wordtower-qr-url';
@@ -118,9 +117,6 @@ const Index = () => {
           }}
         />
       </div>
-
-      {/* Download buttons — bottom left overlay */}
-      <DownloadButtons />
     </div>
   );
 };

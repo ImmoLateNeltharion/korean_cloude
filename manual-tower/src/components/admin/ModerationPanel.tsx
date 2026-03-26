@@ -101,6 +101,29 @@ export function ModerationPanel() {
     onError: (err: Error) => toast.error(err.message || "Ошибка при добавлении"),
   });
 
+  const addThreeMutation = useMutation({
+    mutationFn: () =>
+      fetch("/api/words/manual/add-three", {
+        method: "POST",
+      }).then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.error || "Add three failed");
+        }
+        return r.json() as Promise<{
+          dictionarySize: number;
+          added: Array<{ word: string }>;
+          remainingUnseen: number;
+        }>;
+      }),
+    onSuccess: (payload) => {
+      queryClient.invalidateQueries({ queryKey: ["approved-words"] });
+      const words = payload.added.map((item) => item.word).join(", ");
+      toast.success(`Добавлено 3 слова: ${words}`);
+    },
+    onError: (err: Error) => toast.error(err.message || "Ошибка при добавлении слов"),
+  });
+
   // Active words on the tower (only real approved words from DB)
   const towerList = useMemo(() => {
     return Object.entries(approvedMap).sort((a, b) => b[1] - a[1]);
@@ -168,6 +191,14 @@ export function ModerationPanel() {
             </div>
             <Button type="submit" disabled={manualAddMutation.isPending}>
               {manualAddMutation.isPending ? "Добавление..." : "Добавить"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={addThreeMutation.isPending}
+              onClick={() => addThreeMutation.mutate()}
+            >
+              {addThreeMutation.isPending ? "Подбор..." : "+3 из словаря Vatech"}
             </Button>
           </form>
         </CardContent>

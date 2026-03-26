@@ -4,7 +4,6 @@ import WordTower from "@/components/WordTower";
 import { useStopWords } from "@/contexts/StopWordsContext";
 import { getAllStopWords } from "@/lib/stop-words";
 import { downloadPNG, downloadHTML } from "@/lib/download-snapshot";
-import { DownloadButtons } from "@/components/DownloadButtons";
 
 const Index = () => {
   document.title = "test";
@@ -95,9 +94,6 @@ const Index = () => {
           }}
         />
       </div>
-
-      {/* Download buttons — bottom left overlay */}
-      <DownloadButtons />
     </div>
   );
 };

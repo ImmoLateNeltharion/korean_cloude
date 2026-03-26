@@ -5,10 +5,11 @@ import { WordStats } from "@/components/admin/WordStats";
 import { ModerationPanel } from "@/components/admin/ModerationPanel";
 import { MessagingPanel } from "@/components/admin/MessagingPanel";
 import { SettingsPanel } from "@/components/admin/SettingsPanel";
+import { SnapshotPanel } from "@/components/admin/SnapshotPanel";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BarChart3, Filter, Container, MessageSquare, Send, LogOut, Settings } from "lucide-react";
+import { ArrowLeft, BarChart3, Filter, Container, MessageSquare, Send, LogOut, Settings, Download } from "lucide-react";
 
 const Admin = () => {
   document.title = "админ test";
@@ -47,7 +48,7 @@ const Admin = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="moderation" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7">
             <TabsTrigger value="moderation" className="gap-2">
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Модерация</span>
@@ -78,6 +79,11 @@ const Admin = () => {
               <span className="hidden sm:inline">Настройки</span>
               <span className="sm:hidden">Нас.</span>
             </TabsTrigger>
+            <TabsTrigger value="snapshot" className="gap-2">
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">PNG</span>
+              <span className="sm:hidden">PNG</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="moderation">
@@ -102,6 +108,10 @@ const Admin = () => {
 
           <TabsContent value="settings">
             <SettingsPanel />
+          </TabsContent>
+
+          <TabsContent value="snapshot">
+            <SnapshotPanel />
           </TabsContent>
         </Tabs>
       </div>
