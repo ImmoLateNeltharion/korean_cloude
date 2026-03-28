@@ -60,6 +60,7 @@ const QR_SAFE_PAD_MAX = 64;
 const WORD_GAP = 1;
 const GLOBAL_FONT_SCALE = 1.34;
 const SILHOUETTE_SCALE = 0.64;
+const MOBILE_SILHOUETTE_SCALE = 0.54;
 const MAP_PAD_X = 6;
 const MAP_PAD_Y = 6;
 
@@ -178,12 +179,12 @@ const SHAPE_BOUNDS = (() => {
   return { minX, maxX, minY, maxY };
 })();
 
-function buildMapTransform(width: number, height: number): MapTransform {
+function buildMapTransform(width: number, height: number, scaleFactor = SILHOUETTE_SCALE): MapTransform {
   const shapeW = SHAPE_BOUNDS.maxX - SHAPE_BOUNDS.minX;
   const shapeH = SHAPE_BOUNDS.maxY - SHAPE_BOUNDS.minY;
   const availW = Math.max(120, width - MAP_PAD_X * 2);
   const availH = Math.max(120, height - MAP_PAD_Y * 2);
-  const scale = Math.min(availW / shapeW, availH / shapeH) * SILHOUETTE_SCALE;
+  const scale = Math.min(availW / shapeW, availH / shapeH) * scaleFactor;
   const drawW = shapeW * scale;
   const drawH = shapeH * scale;
   const originX = (width - drawW) / 2;
@@ -372,12 +373,13 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
       const sorted = [...entries].sort((a, b) => b[1] - a[1]).slice(0, dynamicWordLimit);
       const width = size.width;
       const height = size.height;
+      const silhouetteScale = width < 768 ? MOBILE_SILHOUETTE_SCALE : SILHOUETTE_SCALE;
       const minWordSize = Math.max(
         24,
         Math.min(Math.round(Math.min(width, height) * 0.042), 44)
       );
 
-      const tr = buildMapTransform(width, height);
+      const tr = buildMapTransform(width, height, silhouetteScale);
       const mapW = (tr.maxX - tr.minX) * tr.scale;
       const mapH = (tr.maxY - tr.minY) * tr.scale;
       const cx = tr.originX + mapW / 2;
@@ -655,7 +657,8 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
 
   const shapeOutlinePaths = useMemo(() => {
     if (size.width === 0 || size.height === 0) return [];
-    return getShapeOutlinePaths(buildMapTransform(size.width, size.height));
+    const silhouetteScale = size.width < 768 ? MOBILE_SILHOUETTE_SCALE : SILHOUETTE_SCALE;
+    return getShapeOutlinePaths(buildMapTransform(size.width, size.height, silhouetteScale));
   }, [size.height, size.width]);
 
   return (
