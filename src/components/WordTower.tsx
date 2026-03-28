@@ -59,6 +59,7 @@ const QR_BREATHING = 4;
 const QR_SAFE_PAD_MAX = 64;
 const WORD_GAP = 1;
 const GLOBAL_FONT_SCALE = 1.34;
+const MOBILE_FONT_SCALE = 1.08;
 const SILHOUETTE_SCALE = 0.64;
 const MOBILE_SILHOUETTE_SCALE = 0.54;
 const MAP_PAD_X = 6;
@@ -373,10 +374,15 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
       const sorted = [...entries].sort((a, b) => b[1] - a[1]).slice(0, dynamicWordLimit);
       const width = size.width;
       const height = size.height;
+      const isMobile = width < 768;
       const silhouetteScale = width < 768 ? MOBILE_SILHOUETTE_SCALE : SILHOUETTE_SCALE;
+      const fontScale = isMobile ? MOBILE_FONT_SCALE : GLOBAL_FONT_SCALE;
       const minWordSize = Math.max(
-        24,
-        Math.min(Math.round(Math.min(width, height) * 0.042), 44)
+        isMobile ? 16 : 24,
+        Math.min(
+          Math.round(Math.min(width, height) * (isMobile ? 0.03 : 0.042)),
+          isMobile ? 30 : 44
+        )
       );
 
       const tr = buildMapTransform(width, height, silhouetteScale);
@@ -528,7 +534,7 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
         const cappedForRatio = Math.min(10, Math.max(1, count));
         const ratio = (cappedForRatio - 1) / 9;
         const tier = sizeTierForCount(cappedForRatio);
-        const baseSize = Math.round(minWordSize * tier * GLOBAL_FONT_SCALE);
+        const baseSize = Math.round(minWordSize * tier * fontScale);
         const seed = hashWord(word);
         const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
 
@@ -577,7 +583,7 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
         const cappedForRatio = Math.min(10, Math.max(1, count));
         const ratio = (cappedForRatio - 1) / 9;
         const tier = sizeTierForCount(cappedForRatio);
-        const baseSize = Math.round(minWordSize * tier * GLOBAL_FONT_SCALE);
+        const baseSize = Math.round(minWordSize * tier * fontScale);
         const seed = hashWord(word);
         const color = BRAND_PALETTE[seed % BRAND_PALETTE.length];
         let placedWord: PlacedWord | null = null;
