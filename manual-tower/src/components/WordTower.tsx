@@ -373,8 +373,8 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
       const width = size.width;
       const height = size.height;
       const minWordSize = Math.max(
-        12,
-        Math.min(Math.round(Math.min(width, height) * 0.021), 22)
+        24,
+        Math.min(Math.round(Math.min(width, height) * 0.042), 44)
       );
 
       const tr = buildMapTransform(width, height);
