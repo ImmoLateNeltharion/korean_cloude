@@ -2,12 +2,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StopWordsManager } from "@/components/admin/StopWordsManager";
 import { WordStats } from "@/components/admin/WordStats";
 import { ModerationPanel } from "@/components/admin/ModerationPanel";
+import { MessagingPanel } from "@/components/admin/MessagingPanel";
 import { SettingsPanel } from "@/components/admin/SettingsPanel";
 import { SnapshotPanel } from "@/components/admin/SnapshotPanel";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BarChart3, Filter, MessageSquare, LogOut, Settings, Download } from "lucide-react";
+import { ArrowLeft, BarChart3, Filter, MessageSquare, Send, LogOut, Settings, Download } from "lucide-react";
 import type { CSSProperties } from "react";
 
 const adminThemeVars: CSSProperties = {
@@ -87,6 +88,11 @@ const Admin = () => {
               <span className="hidden sm:inline">Статистика</span>
               <span className="sm:hidden">Стат.</span>
             </TabsTrigger>
+            <TabsTrigger value="messaging" className="gap-2">
+              <Send className="h-4 w-4" />
+              <span className="hidden sm:inline">Сообщения</span>
+              <span className="sm:hidden">Чат</span>
+            </TabsTrigger>
             <TabsTrigger value="settings" className="gap-2">
               <Settings className="h-4 w-4" />
               <span className="hidden sm:inline">Настройки</span>
@@ -109,6 +115,10 @@ const Admin = () => {
 
           <TabsContent value="word-stats">
             <WordStats />
+          </TabsContent>
+
+          <TabsContent value="messaging">
+            <MessagingPanel />
           </TabsContent>
 
           <TabsContent value="settings">
