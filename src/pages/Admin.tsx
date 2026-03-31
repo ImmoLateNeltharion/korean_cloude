@@ -1,6 +1,5 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StopWordsManager } from "@/components/admin/StopWordsManager";
-import { DockerStatus } from "@/components/admin/DockerStatus";
 import { WordStats } from "@/components/admin/WordStats";
 import { ModerationPanel } from "@/components/admin/ModerationPanel";
 import { MessagingPanel } from "@/components/admin/MessagingPanel";
@@ -9,7 +8,7 @@ import { SnapshotPanel } from "@/components/admin/SnapshotPanel";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BarChart3, Filter, Container, MessageSquare, Send, LogOut, Settings, Download } from "lucide-react";
+import { ArrowLeft, BarChart3, Filter, MessageSquare, Send, LogOut, Settings, Download } from "lucide-react";
 
 const Admin = () => {
   document.title = "админ test";
@@ -48,7 +47,7 @@ const Admin = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="moderation" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6">
             <TabsTrigger value="moderation" className="gap-2">
               <MessageSquare className="h-4 w-4" />
               <span className="hidden sm:inline">Модерация</span>
@@ -63,11 +62,6 @@ const Admin = () => {
               <BarChart3 className="h-4 w-4" />
               <span className="hidden sm:inline">Статистика</span>
               <span className="sm:hidden">Стат.</span>
-            </TabsTrigger>
-            <TabsTrigger value="docker" className="gap-2">
-              <Container className="h-4 w-4" />
-              <span className="hidden sm:inline">Docker</span>
-              <span className="sm:hidden">Docker</span>
             </TabsTrigger>
             <TabsTrigger value="messaging" className="gap-2">
               <Send className="h-4 w-4" />
@@ -96,10 +90,6 @@ const Admin = () => {
 
           <TabsContent value="word-stats">
             <WordStats />
-          </TabsContent>
-
-          <TabsContent value="docker">
-            <DockerStatus />
           </TabsContent>
 
           <TabsContent value="messaging">
