@@ -714,7 +714,7 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0, heartGlowEnabled =
             style={{
               left: `${item.x}px`,
               top: `${item.y}px`,
-              fontFamily: "Vatech, ManropeCyr, sans-serif",
+              fontFamily: "Vatech, NotoSansCJKtc, ManropeCyr, sans-serif",
               fontSize: `${item.fontSize}px`,
               color: `hsl(${item.color[0]} ${item.color[1]}% ${item.color[2]}%)`,
               opacity: 1,

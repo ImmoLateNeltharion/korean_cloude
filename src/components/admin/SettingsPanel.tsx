@@ -4,10 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { QrCode, Bot } from 'lucide-react';
+import { QrCode, Bot, Sparkles } from 'lucide-react';
 import { toast } from "sonner";
 
 const QR_FALLBACK = 'https://t.me/YourBotUsername';
+const HEART_GLOW_KEY = "wordtower-heart-glow";
 
 type SettingsResponse = {
   botLink: string;
@@ -32,6 +33,10 @@ export function SettingsPanel() {
   const [botToken, setBotToken] = useState("");
   const [saved, setSaved] = useState(false);
   const [tokenSaved, setTokenSaved] = useState(false);
+  const [heartGlowEnabled, setHeartGlowEnabled] = useState(() => {
+    const v = localStorage.getItem(HEART_GLOW_KEY);
+    return v === null ? true : v === "1";
+  });
 
   useEffect(() => {
     if (!data) return;
@@ -127,6 +132,21 @@ export function SettingsPanel() {
               <p className="text-xs text-muted-foreground">
                 QR на главной странице обновится автоматически при смене URL.
               </p>
+              <div className="pt-2">
+                <Label className="mb-2 block">Свечение контура</Label>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => {
+                    const next = !heartGlowEnabled;
+                    setHeartGlowEnabled(next);
+                    localStorage.setItem(HEART_GLOW_KEY, next ? "1" : "0");
+                  }}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Свечение: {heartGlowEnabled ? "Вкл" : "Выкл"}
+                </Button>
+              </div>
             </div>
             <div className="shrink-0">
               <div className="p-3 bg-white rounded-lg shadow-sm inline-block">
