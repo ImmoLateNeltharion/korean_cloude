@@ -73,7 +73,7 @@ const Index = () => {
       {/* Radial glow behind heart */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{ background: 'radial-gradient(ellipse 50% 55% at 50% 48%, rgba(180,30,60,0.12) 0%, rgba(120,20,40,0.05) 40%, transparent 70%)' }}
+        style={{ background: 'radial-gradient(ellipse 54% 58% at 50% 48%, rgba(44,92,156,0.16) 0%, rgba(20,36,64,0.08) 38%, transparent 72%)' }}
       />
 
       {/* Tower fills the remaining screen */}
@@ -89,8 +89,8 @@ const Index = () => {
             width: `${logoSize * 2}px`,
             maxWidth: "40vw",
             height: "auto",
-            filter: "brightness(0) invert(1) drop-shadow(0 0 10px rgba(220,220,230,0.7)) drop-shadow(0 0 28px rgba(200,200,220,0.4))",
-            opacity: 0.95,
+            filter: "grayscale(1) saturate(0) brightness(1.25) contrast(1.08) drop-shadow(0 0 8px rgba(228,233,242,0.45)) drop-shadow(0 0 24px rgba(138,176,228,0.24))",
+            opacity: 0.92,
           }}
         />
       </div>

@@ -44,14 +44,14 @@ type MapTransform = {
 };
 
 const BRAND_PALETTE: [number, number, number][] = [
-  [352, 85, 55],
-  [0, 5, 82],
-  [350, 65, 72],
-  [0, 0, 94],
-  [355, 90, 44],
-  [5, 12, 76],
-  [348, 75, 63],
-  [0, 3, 88],
+  [0, 0, 96],   // bright silver-white
+  [0, 0, 90],   // soft silver
+  [0, 0, 82],   // graphite silver
+  [358, 84, 52],// vivid red
+  [352, 78, 58],// warm red
+  [348, 66, 64],// muted red
+  [0, 0, 88],   // neutral light silver
+  [355, 72, 46],// deep red
 ];
 
 const QR_MARGIN = 6;
