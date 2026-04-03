@@ -27,6 +27,23 @@ function pickRandomWords(count: number): string[] {
   return pool.slice(0, Math.max(1, Math.min(count, pool.length)));
 }
 
+function seedApprovedWordsIfEmpty(count: number) {
+  const safeCount = Math.max(1, Math.min(count, COMPANY_THEME_WORDS.length));
+  const existing = Object.keys(getApprovedWordsMap()).length;
+  if (existing > 0) {
+    console.log(`Seed skipped: approved words already exist (${existing})`);
+    return;
+  }
+
+  const picked = pickRandomWords(safeCount);
+  let inserted = 0;
+  for (const word of picked) {
+    const result = addApprovedWord(word, "bootstrap-seed");
+    if (result) inserted += 1;
+  }
+  console.log(`Seed done: inserted ${inserted} approved words`);
+}
+
 // ─── Auth endpoints (public) ────────────────────────────
 app.post("/api/auth/login", loginHandler);
 app.post("/api/auth/logout", logoutHandler);
@@ -255,6 +272,15 @@ app.post("/api/messages/broadcast", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Docker status API running on http://localhost:${PORT}`);
 });
+
+const SEED_APPROVED_WORDS_ON_EMPTY = Number(process.env.SEED_APPROVED_WORDS_ON_EMPTY || 0);
+if (Number.isFinite(SEED_APPROVED_WORDS_ON_EMPTY) && SEED_APPROVED_WORDS_ON_EMPTY > 0) {
+  try {
+    seedApprovedWordsIfEmpty(SEED_APPROVED_WORDS_ON_EMPTY);
+  } catch (err) {
+    console.error("Failed to seed approved words:", err);
+  }
+}
 
 // ─── Start Telegram bot (if token provided) ─────────────
 const BOT_TOKEN = (getSetting(BOT_TOKEN_KEY) || process.env.TELEGRAM_BOT_TOKEN || "").trim();

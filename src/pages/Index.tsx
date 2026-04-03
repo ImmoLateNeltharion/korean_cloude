@@ -181,7 +181,7 @@ const Index = () => {
               objectFit: "contain",
               opacity: showSlogan ? 1 : 0,
               transition: "opacity 900ms ease",
-              filter: "brightness(1.05)",
+              filter: "brightness(0) invert(1) contrast(1.08)",
             }}
           />
         </div>

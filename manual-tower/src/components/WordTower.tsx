@@ -4,6 +4,7 @@ interface WordTowerProps {
   words: Record<string, number>;
   qrSize?: number;
   centerLogoSize?: number;
+  heartGlowEnabled?: boolean;
 }
 
 type PlacedWord = {
@@ -330,7 +331,7 @@ function getShapeOutlinePaths(tr: MapTransform): string[] {
   });
 }
 
-const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) => {
+const WordTower = ({ words, qrSize = 160, centerLogoSize = 0, heartGlowEnabled = true }: WordTowerProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [fontsReady, setFontsReady] = useState(false);
@@ -692,6 +693,13 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
     return getShapeOutlinePaths(buildMapTransform(size.width, size.height, silhouetteScale));
   }, [size.height, size.width]);
 
+  const glowOutlinePaths = useMemo(() => {
+    if (size.width === 0 || size.height === 0) return [];
+    const baseScale = size.width < 768 ? MOBILE_SILHOUETTE_SCALE : SILHOUETTE_SCALE;
+    const glowScale = size.width < 768 ? baseScale * 1.05 : baseScale * 1.03;
+    return getShapeOutlinePaths(buildMapTransform(size.width, size.height, glowScale));
+  }, [size.height, size.width]);
+
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden select-none">
       <div className="absolute inset-0 pointer-events-none word-cloud-bg" />
@@ -702,6 +710,32 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0 }: WordTowerProps) 
             "radial-gradient(ellipse 72% 68% at 50% 50%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.08) 82%, rgba(0,0,0,0.14) 100%)",
         }}
       />
+      {heartGlowEnabled && glowOutlinePaths.length > 0 && (
+        <svg
+          className="absolute inset-0 pointer-events-none heart-neon-beat"
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${size.width} ${size.height}`}
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <filter id="heartGlowOffline" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="4.8" result="blurSoft" />
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2.6" result="blurWide" />
+              <feMerge>
+                <feMergeNode in="blurSoft" />
+                <feMergeNode in="blurWide" />
+              </feMerge>
+            </filter>
+          </defs>
+          {glowOutlinePaths.map((path, idx) => (
+            <g key={`heart-glow-offline-${idx}`} filter="url(#heartGlowOffline)">
+              <path d={path} fill="none" stroke="hsl(204 58% 58% / 0.11)" strokeWidth={3.8} />
+              <path d={path} fill="none" stroke="hsl(204 60% 56% / 0.17)" strokeWidth={2.2} />
+            </g>
+          ))}
+        </svg>
+      )}
 
       {placed.map((item) => {
         return (

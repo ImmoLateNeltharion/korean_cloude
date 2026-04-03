@@ -124,6 +124,23 @@ function pickRandomUnique<T>(items: T[], count: number): T[] {
   return pool.slice(0, count);
 }
 
+function seedApprovedWordsIfEmpty(count: number) {
+  const safeCount = Math.max(1, Math.min(count, VATECH_DICTIONARY.length));
+  const existing = Object.keys(getApprovedWordsMap()).length;
+  if (existing > 0) {
+    console.log(`Seed skipped: approved words already exist (${existing})`);
+    return;
+  }
+
+  const picked = pickRandomUnique(VATECH_DICTIONARY, safeCount);
+  let inserted = 0;
+  for (const word of picked) {
+    addApprovedWordManual(word, 1);
+    inserted += 1;
+  }
+  console.log(`Seed done: inserted ${inserted} approved words`);
+}
+
 app.post("/api/words/manual/add-three", (_req, res) => {
   try {
     const approvedSet = new Set(
@@ -152,3 +169,12 @@ app.post("/api/words/manual/add-three", (_req, res) => {
 app.listen(PORT, () => {
   console.log(`Docker status API running on http://localhost:${PORT}`);
 });
+
+const SEED_APPROVED_WORDS_ON_EMPTY = Number(process.env.SEED_APPROVED_WORDS_ON_EMPTY || 0);
+if (Number.isFinite(SEED_APPROVED_WORDS_ON_EMPTY) && SEED_APPROVED_WORDS_ON_EMPTY > 0) {
+  try {
+    seedApprovedWordsIfEmpty(SEED_APPROVED_WORDS_ON_EMPTY);
+  } catch (err) {
+    console.error("Failed to seed approved words:", err);
+  }
+}

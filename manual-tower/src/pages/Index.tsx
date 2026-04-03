@@ -6,6 +6,7 @@ import { getAllStopWords } from "@/lib/stop-words";
 import { downloadPNG, downloadHTML } from "@/lib/download-snapshot";
 
 const BRAND_SWITCH_MS = 10_000;
+const HEART_GLOW_KEY = "wordtower-heart-glow";
 
 const Index = () => {
   document.title = "test";
@@ -13,6 +14,20 @@ const Index = () => {
   const mainRef = useRef<HTMLDivElement>(null);
   const [logoSize, setLogoSize] = useState(190);
   const [showSlogan, setShowSlogan] = useState(false);
+  const [heartGlowEnabled, setHeartGlowEnabled] = useState(true);
+
+  useEffect(() => {
+    const readGlow = () => {
+      const v = localStorage.getItem(HEART_GLOW_KEY);
+      setHeartGlowEnabled(v === null ? true : v === "1");
+    };
+    readGlow();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === HEART_GLOW_KEY) readGlow();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -89,7 +104,12 @@ const Index = () => {
 
       {/* Tower fills the remaining screen */}
       <div className="relative z-10 flex-1 min-h-0 w-full">
-        <WordTower words={filteredWords} qrSize={0} centerLogoSize={logoSize} />
+        <WordTower
+          words={filteredWords}
+          qrSize={0}
+          centerLogoSize={logoSize}
+          heartGlowEnabled={heartGlowEnabled}
+        />
       </div>
 
       <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
@@ -135,7 +155,7 @@ const Index = () => {
               objectFit: "contain",
               opacity: showSlogan ? 1 : 0,
               transition: "opacity 900ms ease",
-              filter: "brightness(1.05)",
+              filter: "brightness(0) invert(1) contrast(1.08)",
             }}
           />
         </div>

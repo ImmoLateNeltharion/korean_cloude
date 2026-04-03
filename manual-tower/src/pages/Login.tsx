@@ -42,9 +42,12 @@ const Login = () => {
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
-      style={{ backgroundColor: "#0a0a0a" }}
+      style={{
+        background:
+          "radial-gradient(80% 55% at 20% 0%, rgba(255,42,98,0.2), transparent 70%), radial-gradient(70% 50% at 82% 10%, rgba(67,97,255,0.2), transparent 72%), linear-gradient(180deg, rgba(7,9,24,0.96) 0%, rgba(9,6,20,0.92) 100%)",
+      }}
     >
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm border border-[hsl(340_36%_30%_/_0.8)] bg-[hsl(228_36%_14%_/_0.88)] text-white backdrop-blur">
         <CardHeader className="text-center">
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Lock className="h-6 w-6 text-muted-foreground" />

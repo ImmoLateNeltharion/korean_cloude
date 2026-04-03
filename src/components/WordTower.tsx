@@ -712,7 +712,7 @@ const WordTower = ({ words, qrSize = 160, centerLogoSize = 0, heartGlowEnabled =
       />
       {heartGlowEnabled && glowOutlinePaths.length > 0 && (
         <svg
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none heart-neon-beat"
           width="100%"
           height="100%"
           viewBox={`0 0 ${size.width} ${size.height}`}
