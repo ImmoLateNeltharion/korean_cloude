@@ -117,10 +117,11 @@ const Index = () => {
             style={{
               width: "100%",
               height: "auto",
-              filter: "brightness(0) invert(1)",
+              filter: "brightness(0) invert(1) contrast(1.34) drop-shadow(0 0 12px rgba(255,255,255,0.26))",
               opacity: showSlogan ? 0 : 1,
               transition: "opacity 900ms ease",
               display: "block",
+              mixBlendMode: "normal",
             }}
           />
           <img
